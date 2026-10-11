@@ -20,11 +20,13 @@ export default function ChannelScreen() {
     <Shell sidebar={<AboutCard channel={channel} />}>
       {/* Channel header: banner + icon + name */}
       <View className="mb-2">
-        {channel.banner_url ? (
-          <Image source={{ uri: channel.banner_url }} style={{ height: bannerHeight }} resizeMode="cover" />
-        ) : (
-          <PixelScene height={bannerHeight} />
-        )}
+        <View className="overflow-hidden rounded-xl">
+          {channel.banner_url ? (
+            <Image source={{ uri: channel.banner_url }} style={{ height: bannerHeight }} resizeMode="cover" />
+          ) : (
+            <PixelScene height={bannerHeight} />
+          )}
+        </View>
         <View className="flex-row items-center gap-3 px-3 py-4">
           <Avatar name={channel.name} size={wide ? 56 : 40} />
           <Text className={`font-bold text-ink ${wide ? 'text-3xl' : 'text-2xl'}`}>
