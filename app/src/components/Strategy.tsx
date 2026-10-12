@@ -1,0 +1,196 @@
+import { useRef, useState, type ReactNode } from 'react';
+import { Pressable, Text, TextInput, View } from 'react-native';
+import Markdown from 'react-native-markdown-display';
+import {
+  useAddKeyword,
+  useDeleteKeyword,
+  useKeywords,
+  useStrategy,
+  useUpdateFilterPrompt,
+  type Keyword,
+} from '@/lib/api';
+import { useColors } from '@/lib/theme';
+import { PixelIcon } from './PixelIcon';
+import { ButtonLabel, RetroButton, Window } from './Retro';
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <View className="gap-1.5">
+      <Text className="font-mono-bold text-xs text-ink-weak">{label}</Text>
+      {children}
+    </View>
+  );
+}
+
+// A keyword chip with a delete button on the right
+function Chip({ keyword, channelId }: { keyword: Keyword; channelId: number }) {
+  const remove = useDeleteKeyword(channelId);
+  const c = useColors();
+  return (
+    <View className="flex-row items-center border border-line bg-surface">
+      <Text className="py-1 pl-2 pr-1 font-mono text-xs text-ink">{keyword.query}</Text>
+      <Pressable
+        onPress={() => remove.mutate(keyword.id)}
+        className="h-6 w-6 items-center justify-center hover:bg-pill"
+        accessibilityLabel={`Delete ${keyword.query}`}
+      >
+        <PixelIcon name="close" size={8} color={c['ink-weak']} />
+      </Pressable>
+    </View>
+  );
+}
+
+// Type a keyword and press Enter or Add
+function AddKeyword({ channelId }: { channelId: number }) {
+  const [text, setText] = useState('');
+  const input = useRef<TextInput>(null);
+  const add = useAddKeyword(channelId);
+  const c = useColors();
+  const query = text.trim();
+
+  // Focus stays in the box so several keywords can be added in a row
+  const submit = () =>
+    query &&
+    add.mutate(query, {
+      onSuccess: () => {
+        setText('');
+        input.current?.focus();
+      },
+    });
+  const duplicate = (add.error as { code?: string } | null)?.code === '23505';
+
+  return (
+    <View className="gap-1">
+      <View className="flex-row gap-1.5">
+        <View className="min-w-0 flex-1 border border-line bg-surface">
+          <TextInput
+            value={text}
+            onChangeText={(t) => {
+              setText(t);
+              add.reset();
+            }}
+            onSubmitEditing={submit}
+            ref={input}
+            maxLength={200}
+            placeholder="Add a keyword"
+            placeholderTextColor={c['ink-weak']}
+            className="h-7 px-2 font-mono text-xs text-ink"
+            style={{ outlineStyle: 'none' } as any}
+          />
+        </View>
+        <RetroButton tone="primary" onPress={submit} disabled={!query || add.isPending}>
+          <ButtonLabel light>Add</ButtonLabel>
+        </RetroButton>
+      </View>
+      {add.error && (
+        <Text className="font-mono text-xs text-primary">
+          {duplicate ? 'Already in the list' : add.error.message}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+// How the agent searches X: source, schedule and keywords per topic.
+export function SearchCard({ channelId }: { channelId: number }) {
+  const { data: s } = useStrategy(channelId);
+  const { data: keywords } = useKeywords(channelId);
+  return (
+    <Window title="Search">
+      {s && (
+        <View className="gap-4 p-3">
+          <Field label="Source">
+            <Text className="text-sm text-ink">{s.source}</Text>
+          </Field>
+          <Field label="Frequency">
+            <Text className="text-sm text-ink">{s.frequency}</Text>
+            <Text className="text-sm text-ink">{s.per_keyword} posts per keyword</Text>
+          </Field>
+          <Field label="Keywords">
+            <View className="flex-row flex-wrap gap-1.5">
+              {keywords?.map((k) => (
+                <Chip key={k.id} keyword={k} channelId={channelId} />
+              ))}
+            </View>
+            <AddKeyword channelId={channelId} />
+          </Field>
+        </View>
+      )}
+    </Window>
+  );
+}
+
+// The prompt the agent screens collected posts with: rendered as markdown, editable in place.
+export function FilterCard({ channelId }: { channelId: number }) {
+  const { data: s } = useStrategy(channelId);
+  const update = useUpdateFilterPrompt(channelId);
+  const [draft, setDraft] = useState<string | null>(null);
+  const c = useColors();
+
+  const save = () => update.mutate(draft!, { onSuccess: () => setDraft(null) });
+
+  return (
+    <Window title="Filter">
+      {s && (
+        <View className="gap-2 p-3">
+          {draft === null ? (
+            <>
+              <Markdown style={markdownStyle(c)}>{s.filter_prompt}</Markdown>
+              <View className="flex-row justify-end">
+                <RetroButton onPress={() => setDraft(s.filter_prompt)}>
+                  <ButtonLabel>Edit</ButtonLabel>
+                </RetroButton>
+              </View>
+            </>
+          ) : (
+            <>
+              <View className="border border-line bg-surface">
+                <TextInput
+                  value={draft}
+                  onChangeText={setDraft}
+                  autoFocus
+                  multiline
+                  className="min-h-64 px-2 py-2 font-mono text-xs leading-5 text-ink"
+                  style={{ outlineStyle: 'none' } as any}
+                />
+              </View>
+              <View className="flex-row justify-end gap-2">
+                <RetroButton onPress={() => setDraft(null)}>
+                  <ButtonLabel>Cancel</ButtonLabel>
+                </RetroButton>
+                <RetroButton
+                  tone="primary"
+                  onPress={save}
+                  disabled={!draft.trim() || update.isPending}
+                >
+                  <ButtonLabel light>Save</ButtonLabel>
+                </RetroButton>
+              </View>
+            </>
+          )}
+        </View>
+      )}
+    </Window>
+  );
+}
+
+function markdownStyle(c: ReturnType<typeof useColors>) {
+  return {
+    body: { color: c.ink, fontSize: 13, lineHeight: 20 },
+    heading1: { fontSize: 18, fontWeight: '700' as const, marginVertical: 6 },
+    heading2: { fontSize: 15, fontWeight: '700' as const, marginVertical: 6 },
+    heading3: { fontSize: 13, fontWeight: '700' as const, marginVertical: 4 },
+    paragraph: { marginTop: 0, marginBottom: 8 },
+    bullet_list: { marginBottom: 8 },
+    ordered_list: { marginBottom: 8 },
+    code_inline: { fontFamily: 'IBMPlexMono_400Regular', backgroundColor: c.pill, color: c.ink },
+    fence: {
+      fontFamily: 'IBMPlexMono_400Regular',
+      backgroundColor: c.pill,
+      color: c.ink,
+      borderWidth: 0,
+    },
+    link: { color: c.primary },
+    hr: { backgroundColor: c.line },
+  };
+}

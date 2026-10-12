@@ -2,19 +2,19 @@ insert into channels (slug, name, description, created_at) values
   ('chat', 'chat', 'A place to talk about interesting things you came across. Be kind, and share freely.', now() - interval '120 days');
 
 insert into posts (channel_id, author_name, title, body, image_url, score, created_at) values
-  (1, 'fawn_walks', 'Found this little cafe corner on my walk today', 'Tucked away down a side street. Nobody was there, so I just sat for an hour.', 'https://picsum.photos/seed/cat/800/500', 342, now() - interval '3 hours'),
-  (1, 'zhe_codes', 'Anyone else sleep until the afternoon every weekend?', 'Set three alarms and turned off every one of them in my sleep. Woke up at 2:30pm and the day was just gone.', null, 128, now() - interval '5 hours'),
-  (1, 'evening_breeze', 'Sharing a photo I just took', '', 'https://picsum.photos/seed/sunset/800/600', 517, now() - interval '9 hours'),
-  (1, 'momo', 'Book recommendation: Thinking, Fast and Slow', 'It explains how we make decisions and all the ways our intuition misleads us. Very readable even without a psychology background. I notice my own biases everywhere now.', null, 86, now() - interval '1 day'),
-  (1, 'old_zhou', 'First attempt at caramel, total disaster', 'Burned the sugar and the whole pot turned bitter. How do you actually know when to take it off the heat?', null, 64, now() - interval '2 days'),
-  (1, 'kiki', 'What is the most useful productivity tool you have ever used?', 'I will go first: my calendar. Everything goes on the calendar. If it is not on the calendar, it does not exist.', null, 203, now() - interval '3 days');
+  ((select id from channels where slug = 'chat'), 'fawn_walks', 'Found this little cafe corner on my walk today', 'Tucked away down a side street. Nobody was there, so I just sat for an hour.', 'https://picsum.photos/seed/cat/800/500', 342, now() - interval '3 hours'),
+  ((select id from channels where slug = 'chat'), 'zhe_codes', 'Anyone else sleep until the afternoon every weekend?', 'Set three alarms and turned off every one of them in my sleep. Woke up at 2:30pm and the day was just gone.', null, 128, now() - interval '5 hours'),
+  ((select id from channels where slug = 'chat'), 'evening_breeze', 'Sharing a photo I just took', '', 'https://picsum.photos/seed/sunset/800/600', 517, now() - interval '9 hours'),
+  ((select id from channels where slug = 'chat'), 'momo', 'Book recommendation: Thinking, Fast and Slow', 'It explains how we make decisions and all the ways our intuition misleads us. Very readable even without a psychology background. I notice my own biases everywhere now.', null, 86, now() - interval '1 day'),
+  ((select id from channels where slug = 'chat'), 'old_zhou', 'First attempt at caramel, total disaster', 'Burned the sugar and the whole pot turned bitter. How do you actually know when to take it off the heat?', null, 64, now() - interval '2 days'),
+  ((select id from channels where slug = 'chat'), 'kiki', 'What is the most useful productivity tool you have ever used?', 'I will go first: my calendar. Everything goes on the calendar. If it is not on the calendar, it does not exist.', null, 203, now() - interval '3 days');
 
 insert into posts (channel_id, author_name, title, embed_provider, embed_id, score, created_at) values
-  (1, 'zhe_codes', 'Where it all started', 'x', '20', 412, now() - interval '1 hour'),
-  (1, 'kiki', null, 'youtube', 'jNQXAC9IVRw', 275, now() - interval '2 hours'),
-  (1, 'momo', null, 'x', '440322224407314432', 158, now() - interval '6 hours'),
-  (1, 'old_zhou', 'You know the rules and so do I', 'youtube', 'dQw4w9WgXcQ', 99, now() - interval '12 hours'),
-  (1, 'evening_breeze', null, 'x', '266031293945503744', 61, now() - interval '4 days');
+  ((select id from channels where slug = 'chat'), 'zhe_codes', 'Where it all started', 'x', '20', 412, now() - interval '1 hour'),
+  ((select id from channels where slug = 'chat'), 'kiki', null, 'youtube', 'jNQXAC9IVRw', 275, now() - interval '2 hours'),
+  ((select id from channels where slug = 'chat'), 'momo', null, 'x', '440322224407314432', 158, now() - interval '6 hours'),
+  ((select id from channels where slug = 'chat'), 'old_zhou', 'You know the rules and so do I', 'youtube', 'dQw4w9WgXcQ', 99, now() - interval '12 hours'),
+  ((select id from channels where slug = 'chat'), 'evening_breeze', null, 'x', '266031293945503744', 61, now() - interval '4 days');
 
 insert into comments (post_id, parent_id, author_name, body, score, created_at) values
   (1, null, 'zhe_codes', 'This looks like the kind of place that serves amazing coffee and nobody knows about it', 88, now() - interval '2 hours'),

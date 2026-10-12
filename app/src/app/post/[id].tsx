@@ -1,17 +1,15 @@
 import { ActivityIndicator, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { AboutCard } from '@/components/AboutCard';
 import { CommentTree, Composer } from '@/components/Comments';
 import { PixelIcon } from '@/components/PixelIcon';
 import { PostActions, PostEmbed, PostImage, PostTitleBar } from '@/components/PostCard';
 import { ButtonLabel, RetroButton } from '@/components/Retro';
 import { Shell } from '@/components/Shell';
-import { useChannel, useComments, usePost } from '@/lib/api';
+import { useComments, usePost } from '@/lib/api';
 import { useColors } from '@/lib/theme';
 
 export default function PostScreen() {
   const id = Number(useLocalSearchParams<{ id: string }>().id);
-  const { data: channel } = useChannel();
   const { data: post, error } = usePost(id);
   const { data: comments } = useComments(id);
   const c = useColors();
@@ -19,18 +17,18 @@ export default function PostScreen() {
   if (error) return <Text className="p-4 font-mono text-ink">Failed to load: {error.message}</Text>;
 
   return (
-    <Shell sidebar={channel && <AboutCard channel={channel} />}>
-      {!post || !channel ? (
+    <Shell>
+      {!post ? (
         <ActivityIndicator className="mt-10" />
       ) : (
-        <View className="gap-5">
+        <View className="w-full max-w-[756px] gap-5 self-center">
           <View className="flex-row">
             <RetroButton
-              onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+              onPress={() => (router.canGoBack() ? router.back() : router.replace(`/${post.channel.slug}`))}
               accessibilityLabel="Back"
             >
               <PixelIcon name="back" size={12} color={c.ink} />
-              <ButtonLabel>{channel.name}</ButtonLabel>
+              <ButtonLabel>{post.channel.name}</ButtonLabel>
             </RetroButton>
           </View>
 

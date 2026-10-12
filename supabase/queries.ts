@@ -62,27 +62,38 @@ async function withPostVotes(rows: Omit<Post, 'myVote'>[], deviceId: string): Pr
   return rows.map((r) => ({ ...r, myVote: votes.get(r.id) ?? 0 }));
 }
 
-// The first version has a single channel
-export async function fetchChannel(): Promise<Channel> {
-  const { data, error } = await supabase.from('channels').select('*').limit(1).single();
+// The slug is the channel's id in the URL; null when there is no such channel
+export async function fetchChannel(slug: string): Promise<Channel | null> {
+  const { data, error } = await supabase.from('channels').select('*').eq('slug', slug).maybeSingle();
   if (error) throw error;
   return data;
 }
 
-export async function fetchPosts(channelId: number, deviceId: string) {
-  const { data, error } = await supabase
-    .from('posts')
-    .select('*')
-    .eq('channel_id', channelId)
-    .order('created_at', { ascending: false });
+export const PAGE_SIZE = 10;
+
+// One page of the channel's feed (pages start at 1), plus the total number of pages
+export async function fetchPosts(channelId: number, page: number, deviceId: string) {
+  const [{ data, error }, { count, error: countError }] = await Promise.all([
+    supabase.rpc('feed_page', { p_channel_id: channelId, p_page: page, p_page_size: PAGE_SIZE }),
+    supabase.from('posts').select('*', { count: 'exact', head: true }).eq('channel_id', channelId),
+  ]);
   if (error) throw error;
-  return withPostVotes(data, deviceId);
+  if (countError) throw countError;
+  return {
+    posts: await withPostVotes(data, deviceId),
+    pageCount: Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE)),
+  };
 }
 
 export async function fetchPost(id: number, deviceId: string) {
-  const { data, error } = await supabase.from('posts').select('*').eq('id', id).single();
+  const { data, error } = await supabase
+    .from('posts')
+    .select('*, channel:channels(slug, name)')
+    .eq('id', id)
+    .single();
   if (error) throw error;
-  return (await withPostVotes([data], deviceId))[0];
+  const [post] = await withPostVotes([data], deviceId);
+  return post as Post & { channel: Pick<Channel, 'slug' | 'name'> };
 }
 
 export async function fetchComments(postId: number, deviceId: string): Promise<Comment[]> {
@@ -125,5 +136,53 @@ export async function addComment(
   const { error } = await supabase
     .from('comments')
     .insert({ post_id: postId, parent_id: parentId, body, device_id: deviceId });
+  if (error) throw error;
+}
+
+export type Strategy = {
+  source: string;
+  frequency: string;
+  per_keyword: number;
+  filter_prompt: string;
+};
+
+export type Keyword = { id: number; query: string };
+
+// null when the channel has no strategy
+export async function fetchStrategy(channelId: number): Promise<Strategy | null> {
+  const { data, error } = await supabase
+    .from('strategy')
+    .select('*')
+    .eq('channel_id', channelId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateFilterPrompt(channelId: number, prompt: string) {
+  const { error } = await supabase
+    .from('strategy')
+    .update({ filter_prompt: prompt })
+    .eq('channel_id', channelId);
+  if (error) throw error;
+}
+
+export async function fetchKeywords(channelId: number): Promise<Keyword[]> {
+  const { data, error } = await supabase
+    .from('search_keywords')
+    .select('id, query')
+    .eq('channel_id', channelId)
+    .order('id');
+  if (error) throw error;
+  return data;
+}
+
+export async function addKeyword(channelId: number, query: string) {
+  const { error } = await supabase.from('search_keywords').insert({ channel_id: channelId, query });
+  if (error) throw error;
+}
+
+export async function deleteKeyword(id: number) {
+  const { error } = await supabase.from('search_keywords').delete().eq('id', id);
   if (error) throw error;
 }
