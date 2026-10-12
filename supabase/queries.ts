@@ -27,6 +27,8 @@ export type Post = {
   score: number;
   comment_count: number;
   created_at: string;
+  // Set by the agent's filter; a 'dropped' post is a sample shown so wrong drops can be caught
+  filter_decision: 'kept' | 'dropped' | null;
   myVote: Vote;
 };
 
@@ -139,12 +141,12 @@ export async function addComment(
   if (error) throw error;
 }
 
-export type Strategy = {
-  source: string;
-  frequency: string;
-  per_keyword: number;
-  filter_prompt: string;
-};
+export async function editComment(commentId: number, body: string) {
+  const { error } = await supabase.from('comments').update({ body }).eq('id', commentId);
+  if (error) throw error;
+}
+
+export type Strategy = { filter_prompt: string };
 
 export type Keyword = { id: number; query: string };
 
@@ -152,7 +154,7 @@ export type Keyword = { id: number; query: string };
 export async function fetchStrategy(channelId: number): Promise<Strategy | null> {
   const { data, error } = await supabase
     .from('strategy')
-    .select('*')
+    .select('filter_prompt')
     .eq('channel_id', channelId)
     .maybeSingle();
   if (error) throw error;

@@ -3,6 +3,7 @@ import {
   addComment,
   addKeyword,
   deleteKeyword,
+  editComment,
   fetchChannel,
   fetchComments,
   fetchKeywords,
@@ -131,5 +132,13 @@ export function useAddComment(postId: number) {
       qc.invalidateQueries({ queryKey: ['post', postId] });
       qc.invalidateQueries({ queryKey: ['posts'] });
     },
+  });
+}
+
+export function useEditComment(postId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: string }) => editComment(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['comments', postId] }),
   });
 }

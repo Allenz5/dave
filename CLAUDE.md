@@ -2,7 +2,7 @@
 
 ## 目录
 
-- `data/`：数据实验
+- `agent/`：数据自动抓取和 filter，独立于 app 和 supabase
 - `supabase/`：后端（表结构、示例数据、和 Supabase 的所有交互）
 - `app/`：前端（Expo，手机 App、手机网页、电脑网页共用一套代码）
 

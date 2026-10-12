@@ -1,5 +1,5 @@
 -- Each topic is its own channel, with the agent's strategy for it: the X search keywords, and the prompt it filters results with.
--- Editable from the app without login. data/collect.mjs keeps its own copy of the keywords; keep the two in sync by hand.
+-- Editable from the app without login. agent/collect.mjs keeps its own copy of the keywords; keep the two in sync by hand.
 insert into channels (slug, name, description) values
   ('opensource', 'opensource', 'Open source AI: new models, repos and releases.'),
   ('startup', 'startup', 'AI startups: launches, funding rounds and the people building them.');

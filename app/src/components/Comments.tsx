@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
-import { useAddComment, useVoteComment, type Comment } from '@/lib/api';
+import { useAddComment, useEditComment, useVoteComment, type Comment } from '@/lib/api';
 import { useColors } from '@/lib/theme';
 import { timeAgo } from '@/lib/time';
 import { Avatar } from './Avatar';
@@ -61,6 +61,36 @@ export function Composer({
   );
 }
 
+// Edit a comment's text in place
+function EditBox({ comment, onDone }: { comment: Comment; onDone: () => void }) {
+  const [text, setText] = useState(comment.body);
+  const edit = useEditComment(comment.post_id);
+  const save = () => edit.mutate({ id: comment.id, body: text.trim() }, { onSuccess: onDone });
+
+  return (
+    <View className="gap-2 pl-1">
+      <View className="border border-line bg-surface">
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          autoFocus
+          multiline
+          className="min-h-10 px-3 py-2 font-mono text-sm text-ink"
+          style={{ outlineStyle: 'none' } as any}
+        />
+      </View>
+      <View className="flex-row justify-end gap-2">
+        <RetroButton onPress={onDone}>
+          <ButtonLabel>Cancel</ButtonLabel>
+        </RetroButton>
+        <RetroButton tone="primary" onPress={save} disabled={!text.trim() || edit.isPending}>
+          <ButtonLabel light>Save</ButtonLabel>
+        </RetroButton>
+      </View>
+    </View>
+  );
+}
+
 function CommentItem({
   comment,
   childrenOf,
@@ -70,6 +100,7 @@ function CommentItem({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [replying, setReplying] = useState(false);
+  const [editing, setEditing] = useState(false);
   const vote = useVoteComment(comment.post_id);
   const c = useColors();
   const replies = childrenOf.get(comment.id) ?? [];
@@ -105,7 +136,11 @@ function CommentItem({
         </View>
         {!collapsed && (
           <>
-            <Text className="pl-1 text-sm leading-5 text-ink">{comment.body}</Text>
+            {editing ? (
+              <EditBox comment={comment} onDone={() => setEditing(false)} />
+            ) : (
+              <Text className="pl-1 text-sm leading-5 text-ink">{comment.body}</Text>
+            )}
             <View className="flex-row items-center">
               <VotePill
                 plain
@@ -119,6 +154,9 @@ function CommentItem({
               >
                 <PixelIcon name="comment" size={12} color={c['ink-weak']} />
                 <Text className="font-mono-bold text-xs text-ink-weak">Reply</Text>
+              </Pressable>
+              <Pressable onPress={() => setEditing(true)} className="h-7 justify-center px-2 hover:bg-pill">
+                <Text className="font-mono-bold text-xs text-ink-weak">Edit</Text>
               </Pressable>
             </View>
             {replying && (
@@ -141,7 +179,8 @@ function CommentItem({
   );
 }
 
-export function CommentTree({ comments }: { comments: Comment[] }) {
+// limit caps the number of top-level threads shown
+export function CommentTree({ comments, limit }: { comments: Comment[]; limit?: number }) {
   const childrenOf = new Map<number | null, Comment[]>();
   for (const comment of comments) {
     const list = childrenOf.get(comment.parent_id) ?? [];
@@ -150,7 +189,7 @@ export function CommentTree({ comments }: { comments: Comment[] }) {
   }
   return (
     <View className="gap-2">
-      {(childrenOf.get(null) ?? []).map((comment) => (
+      {(childrenOf.get(null) ?? []).slice(0, limit).map((comment) => (
         <CommentItem key={comment.id} comment={comment} childrenOf={childrenOf} />
       ))}
     </View>

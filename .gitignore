@@ -1,0 +1,6 @@
+.env
+agent/media/
+agent/collect.log
+agent/pool_*.jsonl
+agent/filter_log.jsonl
+agent/refine_log.jsonl

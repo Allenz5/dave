@@ -91,7 +91,7 @@ function AddKeyword({ channelId }: { channelId: number }) {
   );
 }
 
-// How the agent searches X: source, schedule and keywords per topic.
+// The X search keywords for a topic.
 export function SearchCard({ channelId }: { channelId: number }) {
   const { data: s } = useStrategy(channelId);
   const { data: keywords } = useKeywords(channelId);
@@ -99,13 +99,6 @@ export function SearchCard({ channelId }: { channelId: number }) {
     <Window title="Search">
       {s && (
         <View className="gap-4 p-3">
-          <Field label="Source">
-            <Text className="text-sm text-ink">{s.source}</Text>
-          </Field>
-          <Field label="Frequency">
-            <Text className="text-sm text-ink">{s.frequency}</Text>
-            <Text className="text-sm text-ink">{s.per_keyword} posts per keyword</Text>
-          </Field>
           <Field label="Keywords">
             <View className="flex-row flex-wrap gap-1.5">
               {keywords?.map((k) => (
