@@ -36,7 +36,9 @@ const done = new Set(readJsonl(LOG).map((d) => `${d.topic}:${d.id}`));
 const channels = await rest("channels?select=id,slug,strategy(filter_prompt)");
 for (const { id: channelId, slug, strategy } of channels) {
   if (!strategy) continue;
-  const todo = readJsonl(poolOf(slug)).filter((p) => !done.has(`${slug}:${p.id}`)).slice(0, limit);
+  // Posts already in the channel were screened there or went in before filtering existed
+  const stored = new Set((await rest(`posts?select=embed_id&channel_id=eq.${channelId}&embed_provider=eq.x`)).map((p) => p.embed_id));
+  const todo = readJsonl(poolOf(slug)).filter((p) => !done.has(`${slug}:${p.id}`) && !stored.has(p.id)).slice(0, limit);
   let kept = 0;
   for (const post of todo) {
     let d;
