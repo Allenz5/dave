@@ -10,7 +10,8 @@ import { PixelIcon } from './PixelIcon';
 import { ButtonLabel, RetroButton } from './Retro';
 import { VotePill, formatCount } from './VotePill';
 
-export function PostActions({ post }: { post: Post }) {
+// canLabel: the viewer owns the post's channel, so can vote
+export function PostActions({ post, canLabel }: { post: Post; canLabel: boolean }) {
   const vote = useVotePost();
   const c = useColors();
   return (
@@ -19,6 +20,7 @@ export function PostActions({ post }: { post: Post }) {
         score={post.score}
         myVote={post.myVote}
         onVote={(value) => vote.mutate({ id: post.id, value })}
+        disabled={!canLabel}
       />
       <RetroButton onPress={() => router.push(`/post/${post.id}`)} accessibilityLabel="Comments">
         <PixelIcon name="comment" color={c.ink} />
@@ -63,12 +65,12 @@ export function PostTitleBar({ name, time }: { name: string; time: string }) {
 const FEED_COMMENTS = 5;
 
 // The post's top comment threads and a comment box, shown under it in the feed
-function FeedComments({ post }: { post: Post }) {
+function FeedComments({ post, canLabel }: { post: Post; canLabel: boolean }) {
   const { data: comments } = useComments(post.id);
   const threads = comments?.filter((c) => c.parent_id === null).length ?? 0;
   return (
     <View className="gap-3 px-3 pb-4">
-      {comments && <CommentTree comments={comments} limit={FEED_COMMENTS} />}
+      {comments && <CommentTree comments={comments} limit={FEED_COMMENTS} canLabel={canLabel} />}
       {threads > FEED_COMMENTS && (
         <Pressable onPress={() => router.push(`/post/${post.id}`)} className="self-start">
           <Text className="font-mono-bold text-xs text-ink-weak hover:text-ink">
@@ -76,13 +78,13 @@ function FeedComments({ post }: { post: Post }) {
           </Text>
         </Pressable>
       )}
-      <Composer postId={post.id} />
+      {canLabel && <Composer postId={post.id} />}
     </View>
   );
 }
 
 // Post card in the feed with its comments below; tapping the post opens it
-export function PostCard({ post }: { post: Post }) {
+export function PostCard({ post, canLabel }: { post: Post; canLabel: boolean }) {
   return (
     <View>
       <Pressable onPress={() => router.push(`/post/${post.id}`)} className="px-3 py-4 hover:bg-surface-hover">
@@ -102,9 +104,9 @@ export function PostCard({ post }: { post: Post }) {
         )}
         {post.image_url && <PostImage uri={post.image_url} />}
         <PostEmbed post={post} />
-        <PostActions post={post} />
+        <PostActions post={post} canLabel={canLabel} />
       </Pressable>
-      <FeedComments post={post} />
+      <FeedComments post={post} canLabel={canLabel} />
     </View>
   );
 }

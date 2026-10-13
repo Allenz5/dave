@@ -22,20 +22,32 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-// A keyword chip with a delete button on the right
-function Chip({ keyword, channelId }: { keyword: Keyword; channelId: number }) {
+// A keyword chip; the channel owner also gets a delete button on the right
+function Chip({
+  keyword,
+  channelId,
+  canEdit,
+}: {
+  keyword: Keyword;
+  channelId: number;
+  canEdit: boolean;
+}) {
   const remove = useDeleteKeyword(channelId);
   const c = useColors();
   return (
     <View className="flex-row items-center border border-line bg-surface">
-      <Text className="py-1 pl-2 pr-1 font-mono text-xs text-ink">{keyword.query}</Text>
-      <Pressable
-        onPress={() => remove.mutate(keyword.id)}
-        className="h-6 w-6 items-center justify-center hover:bg-pill"
-        accessibilityLabel={`Delete ${keyword.query}`}
-      >
-        <PixelIcon name="close" size={8} color={c['ink-weak']} />
-      </Pressable>
+      <Text className={`py-1 pl-2 font-mono text-xs text-ink ${canEdit ? 'pr-1' : 'pr-2'}`}>
+        {keyword.query}
+      </Text>
+      {canEdit && (
+        <Pressable
+          onPress={() => remove.mutate(keyword.id)}
+          className="h-6 w-6 items-center justify-center hover:bg-pill"
+          accessibilityLabel={`Delete ${keyword.query}`}
+        >
+          <PixelIcon name="close" size={8} color={c['ink-weak']} />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -91,8 +103,8 @@ function AddKeyword({ channelId }: { channelId: number }) {
   );
 }
 
-// The X search keywords for a topic.
-export function SearchCard({ channelId }: { channelId: number }) {
+// The X search keywords for a topic; canEdit (the channel owner) adds and deletes them.
+export function SearchCard({ channelId, canEdit }: { channelId: number; canEdit: boolean }) {
   const { data: s } = useStrategy(channelId);
   const { data: keywords } = useKeywords(channelId);
   return (
@@ -102,10 +114,10 @@ export function SearchCard({ channelId }: { channelId: number }) {
           <Field label="Keywords">
             <View className="flex-row flex-wrap gap-1.5">
               {keywords?.map((k) => (
-                <Chip key={k.id} keyword={k} channelId={channelId} />
+                <Chip key={k.id} keyword={k} channelId={channelId} canEdit={canEdit} />
               ))}
             </View>
-            <AddKeyword channelId={channelId} />
+            {canEdit && <AddKeyword channelId={channelId} />}
           </Field>
         </View>
       )}
@@ -113,8 +125,8 @@ export function SearchCard({ channelId }: { channelId: number }) {
   );
 }
 
-// The prompt the agent screens collected posts with: rendered as markdown, editable in place.
-export function FilterCard({ channelId }: { channelId: number }) {
+// The prompt the agent screens collected posts with: rendered as markdown, editable in place by the channel owner.
+export function FilterCard({ channelId, canEdit }: { channelId: number; canEdit: boolean }) {
   const { data: s } = useStrategy(channelId);
   const update = useUpdateFilterPrompt(channelId);
   const [draft, setDraft] = useState<string | null>(null);
@@ -129,11 +141,13 @@ export function FilterCard({ channelId }: { channelId: number }) {
           {draft === null ? (
             <>
               <Markdown style={markdownStyle(c)}>{s.filter_prompt}</Markdown>
-              <View className="flex-row justify-end">
-                <RetroButton onPress={() => setDraft(s.filter_prompt)}>
-                  <ButtonLabel>Edit</ButtonLabel>
-                </RetroButton>
-              </View>
+              {canEdit && (
+                <View className="flex-row justify-end">
+                  <RetroButton onPress={() => setDraft(s.filter_prompt)}>
+                    <ButtonLabel>Edit</ButtonLabel>
+                  </RetroButton>
+                </View>
+              )}
             </>
           ) : (
             <>

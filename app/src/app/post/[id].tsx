@@ -6,6 +6,7 @@ import { PostActions, PostEmbed, PostImage, PostTitleBar } from '@/components/Po
 import { ButtonLabel, RetroButton } from '@/components/Retro';
 import { Shell } from '@/components/Shell';
 import { useComments, usePost } from '@/lib/api';
+import { useUserId } from '@/lib/auth';
 import { useColors } from '@/lib/theme';
 
 export default function PostScreen() {
@@ -13,8 +14,10 @@ export default function PostScreen() {
   const { data: post, error } = usePost(id);
   const { data: comments } = useComments(id);
   const c = useColors();
+  const userId = useUserId();
 
   if (error) return <Text className="p-4 font-mono text-ink">Failed to load: {error.message}</Text>;
+  const isOwner = !!post && userId !== null && userId === post.channel.owner_id;
 
   return (
     <Shell>
@@ -44,12 +47,12 @@ export default function PostScreen() {
             )}
             {post.image_url && <PostImage uri={post.image_url} />}
             <PostEmbed post={post} />
-            <PostActions post={post} />
+            <PostActions post={post} canLabel={isOwner} />
           </View>
 
           <View className="gap-4 border-t border-line px-3 pt-5">
-            <Composer postId={post.id} />
-            <CommentTree comments={comments ?? []} />
+            {isOwner && <Composer postId={post.id} />}
+            <CommentTree comments={comments ?? []} canLabel={isOwner} />
           </View>
         </View>
       )}

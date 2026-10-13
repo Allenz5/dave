@@ -7,6 +7,7 @@ import { Shell } from '@/components/Shell';
 import { FilterCard, SearchCard } from '@/components/Strategy';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useChannel, usePosts, useStrategy, type Channel as ChannelRow } from '@/lib/api';
+import { useUserId } from '@/lib/auth';
 import { useBreakpoints } from '@/lib/theme';
 
 // The URL is /<channel slug>?page=<n>
@@ -28,6 +29,8 @@ function Channel({ channel, page }: { channel: ChannelRow; page: number }) {
   const showNav = navFits && !!strategy;
   const showSidebar = sidebarFits && !!strategy;
   const bannerHeight = wide ? 120 : 72;
+  const userId = useUserId();
+  const isOwner = userId !== null && userId === channel.owner_id;
 
   return (
     <Shell
@@ -35,11 +38,11 @@ function Channel({ channel, page }: { channel: ChannelRow; page: number }) {
       drawer={
         !strategy ? undefined : !showSidebar ? (
           <>
-            <SearchCard channelId={channel.id} />
-            <FilterCard channelId={channel.id} />
+            <SearchCard channelId={channel.id} canEdit={isOwner} />
+            <FilterCard channelId={channel.id} canEdit={isOwner} />
           </>
         ) : !showNav ? (
-          <SearchCard channelId={channel.id} />
+          <SearchCard channelId={channel.id} canEdit={isOwner} />
         ) : undefined
       }
     >
@@ -64,13 +67,13 @@ function Channel({ channel, page }: { channel: ChannelRow; page: number }) {
       <View className="flex-row gap-5">
         {showNav && (
           <View className="w-[272px]">
-            <SearchCard channelId={channel.id} />
+            <SearchCard channelId={channel.id} canEdit={isOwner} />
           </View>
         )}
         <View className="min-w-0 flex-1">
           {feed?.posts.map((post) => (
             <View key={post.id} className="border-t border-line">
-              <PostCard post={post} />
+              <PostCard post={post} canLabel={isOwner} />
             </View>
           ))}
           {feed && (
@@ -83,7 +86,7 @@ function Channel({ channel, page }: { channel: ChannelRow; page: number }) {
         </View>
         {showSidebar && (
           <View className="w-[316px]">
-            <FilterCard channelId={channel.id} />
+            <FilterCard channelId={channel.id} canEdit={isOwner} />
           </View>
         )}
       </View>

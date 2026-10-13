@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
+import { signIn, signOut, useSession } from '@/lib/auth';
 import { themeVars, useBreakpoints, useColors, useScheme } from '@/lib/theme';
 import { LogoMark, PixelIcon } from './PixelIcon';
 
@@ -13,6 +14,20 @@ function Logo() {
         <Text className="font-pixel text-[10px] text-ink">dave</Text>
       </Pressable>
     </Link>
+  );
+}
+
+// Google account in the top bar: sign in, or the signed-in name and sign out
+function Account() {
+  const session = useSession();
+  const name = session?.user.user_metadata.full_name ?? session?.user.email;
+  return (
+    <View className="ml-auto flex-row items-center gap-2">
+      {session && <Text className="font-mono text-xs text-ink">{name}</Text>}
+      <Pressable onPress={session ? signOut : signIn} className="h-6 justify-center px-2 hover:bg-black/10">
+        <Text className="font-mono-bold text-xs text-ink">{session ? 'Sign out' : 'Sign in with Google'}</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -47,6 +62,7 @@ export function Shell({
           </Pressable>
         )}
         <Logo />
+        <Account />
       </View>
 
       <ScrollView ref={scroll} className="flex-1" contentContainerClassName="items-center">

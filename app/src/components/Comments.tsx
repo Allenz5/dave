@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useAddComment, useEditComment, useVoteComment, type Comment } from '@/lib/api';
+import { useUserId } from '@/lib/auth';
 import { useColors } from '@/lib/theme';
 import { timeAgo } from '@/lib/time';
 import { Avatar } from './Avatar';
@@ -94,9 +95,11 @@ function EditBox({ comment, onDone }: { comment: Comment; onDone: () => void }) 
 function CommentItem({
   comment,
   childrenOf,
+  canLabel,
 }: {
   comment: Comment;
   childrenOf: Map<number | null, Comment[]>;
+  canLabel: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [replying, setReplying] = useState(false);
@@ -104,6 +107,8 @@ function CommentItem({
   const vote = useVoteComment(comment.post_id);
   const c = useColors();
   const replies = childrenOf.get(comment.id) ?? [];
+  const userId = useUserId();
+  const mine = userId !== null && comment.user_id === userId;
 
   return (
     <View className="flex-row">
@@ -147,17 +152,22 @@ function CommentItem({
                 score={comment.score}
                 myVote={comment.myVote}
                 onVote={(value) => vote.mutate({ id: comment.id, value })}
+                disabled={!canLabel}
               />
-              <Pressable
-                onPress={() => setReplying(true)}
-                className="h-7 flex-row items-center gap-1.5 px-2 hover:bg-pill"
-              >
-                <PixelIcon name="comment" size={12} color={c['ink-weak']} />
-                <Text className="font-mono-bold text-xs text-ink-weak">Reply</Text>
-              </Pressable>
-              <Pressable onPress={() => setEditing(true)} className="h-7 justify-center px-2 hover:bg-pill">
-                <Text className="font-mono-bold text-xs text-ink-weak">Edit</Text>
-              </Pressable>
+              {canLabel && (
+                <Pressable
+                  onPress={() => setReplying(true)}
+                  className="h-7 flex-row items-center gap-1.5 px-2 hover:bg-pill"
+                >
+                  <PixelIcon name="comment" size={12} color={c['ink-weak']} />
+                  <Text className="font-mono-bold text-xs text-ink-weak">Reply</Text>
+                </Pressable>
+              )}
+              {mine && (
+                <Pressable onPress={() => setEditing(true)} className="h-7 justify-center px-2 hover:bg-pill">
+                  <Text className="font-mono-bold text-xs text-ink-weak">Edit</Text>
+                </Pressable>
+              )}
             </View>
             {replying && (
               <View className="mb-2">
@@ -170,7 +180,7 @@ function CommentItem({
               </View>
             )}
             {replies.map((r) => (
-              <CommentItem key={r.id} comment={r} childrenOf={childrenOf} />
+              <CommentItem key={r.id} comment={r} childrenOf={childrenOf} canLabel={canLabel} />
             ))}
           </>
         )}
@@ -179,8 +189,16 @@ function CommentItem({
   );
 }
 
-// limit caps the number of top-level threads shown
-export function CommentTree({ comments, limit }: { comments: Comment[]; limit?: number }) {
+// limit caps the number of top-level threads shown; canLabel lets the channel owner vote and reply
+export function CommentTree({
+  comments,
+  limit,
+  canLabel,
+}: {
+  comments: Comment[];
+  limit?: number;
+  canLabel: boolean;
+}) {
   const childrenOf = new Map<number | null, Comment[]>();
   for (const comment of comments) {
     const list = childrenOf.get(comment.parent_id) ?? [];
@@ -190,7 +208,7 @@ export function CommentTree({ comments, limit }: { comments: Comment[]; limit?: 
   return (
     <View className="gap-2">
       {(childrenOf.get(null) ?? []).slice(0, limit).map((comment) => (
-        <CommentItem key={comment.id} comment={comment} childrenOf={childrenOf} />
+        <CommentItem key={comment.id} comment={comment} childrenOf={childrenOf} canLabel={canLabel} />
       ))}
     </View>
   );

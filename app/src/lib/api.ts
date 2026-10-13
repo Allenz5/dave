@@ -18,7 +18,7 @@ import {
   type Post,
   type Vote,
 } from '@db/queries';
-import { getDeviceId } from './device';
+import { useUserId } from './auth';
 
 export type { Channel, Comment, EmbedProvider, Keyword, Post, Strategy, Vote } from '@db/queries';
 
@@ -64,22 +64,25 @@ export function useDeleteKeyword(channelId: number) {
 }
 
 export function usePosts(channelId: number, page: number) {
+  const userId = useUserId();
   return useQuery({
-    queryKey: ['posts', channelId, page],
-    queryFn: () => fetchPosts(channelId, page, getDeviceId()),
+    queryKey: ['posts', channelId, page, userId],
+    queryFn: () => fetchPosts(channelId, page, userId),
   });
 }
 
 type FeedPage = Awaited<ReturnType<typeof fetchPosts>>;
 
 export function usePost(id: number) {
-  return useQuery({ queryKey: ['post', id], queryFn: () => fetchPost(id, getDeviceId()) });
+  const userId = useUserId();
+  return useQuery({ queryKey: ['post', id, userId], queryFn: () => fetchPost(id, userId) });
 }
 
 export function useComments(postId: number) {
+  const userId = useUserId();
   return useQuery({
-    queryKey: ['comments', postId],
-    queryFn: () => fetchComments(postId, getDeviceId()),
+    queryKey: ['comments', postId, userId],
+    queryFn: () => fetchComments(postId, userId),
   });
 }
 
@@ -92,14 +95,14 @@ function applyVote<T extends { id: number; score: number; myVote: Vote }>(id: nu
 export function useVotePost() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, value }: { id: number; value: Vote }) => votePost(id, value, getDeviceId()),
+    mutationFn: ({ id, value }: { id: number; value: Vote }) => votePost(id, value),
     onMutate: ({ id, value }) => {
       const update = applyVote<Post>(id, value);
       qc.setQueriesData<FeedPage>(
         { queryKey: ['posts'] },
         (feed) => feed && { ...feed, posts: feed.posts.map(update) },
       );
-      qc.setQueryData<Post>(['post', id], (post) => post && update(post));
+      qc.setQueriesData<Post>({ queryKey: ['post', id] }, (post) => post && update(post));
     },
     onError: (_err, { id }) => {
       qc.invalidateQueries({ queryKey: ['posts'] });
@@ -112,9 +115,9 @@ export function useVoteComment(postId: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, value }: { id: number; value: Vote }) =>
-      voteComment(id, value, getDeviceId()),
+      voteComment(id, value),
     onMutate: ({ id, value }) => {
-      qc.setQueryData<Comment[]>(['comments', postId], (comments) =>
+      qc.setQueriesData<Comment[]>({ queryKey: ['comments', postId] }, (comments) =>
         comments?.map(applyVote<Comment>(id, value)),
       );
     },
@@ -126,7 +129,7 @@ export function useAddComment(postId: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ body, parentId }: { body: string; parentId: number | null }) =>
-      addComment(postId, parentId, body, getDeviceId()),
+      addComment(postId, parentId, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['comments', postId] });
       qc.invalidateQueries({ queryKey: ['post', postId] });

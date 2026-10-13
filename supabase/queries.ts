@@ -1,6 +1,6 @@
 import { supabase } from './client';
 
-// No login: deviceId is a fixed ID generated locally on each device to identify its votes and comments.
+// userId is the signed-in user, or null; it decides which of the user's own votes come back as myVote.
 
 export type Vote = -1 | 0 | 1;
 
@@ -12,6 +12,8 @@ export type Channel = {
   name: string;
   description: string;
   banner_url: string | null;
+  // Only the owner labels the channel's posts and edits its strategy
+  owner_id: string | null;
   created_at: string;
 };
 
@@ -36,6 +38,7 @@ export type Comment = {
   id: number;
   post_id: number;
   parent_id: number | null;
+  user_id: string | null;
   author_name: string;
   body: string;
   score: number;
@@ -47,20 +50,20 @@ async function myVotes(
   table: 'post_votes' | 'comment_votes',
   key: 'post_id' | 'comment_id',
   ids: number[],
-  deviceId: string,
+  userId: string | null,
 ) {
-  if (ids.length === 0) return new Map<number, Vote>();
+  if (ids.length === 0 || !userId) return new Map<number, Vote>();
   const { data, error } = await supabase
     .from(table)
     .select(`${key}, value`)
-    .eq('device_id', deviceId)
+    .eq('user_id', userId)
     .in(key, ids);
   if (error) throw error;
   return new Map((data as any[]).map((row) => [row[key] as number, row.value as Vote]));
 }
 
-async function withPostVotes(rows: Omit<Post, 'myVote'>[], deviceId: string): Promise<Post[]> {
-  const votes = await myVotes('post_votes', 'post_id', rows.map((r) => r.id), deviceId);
+async function withPostVotes(rows: Omit<Post, 'myVote'>[], userId: string | null): Promise<Post[]> {
+  const votes = await myVotes('post_votes', 'post_id', rows.map((r) => r.id), userId);
   return rows.map((r) => ({ ...r, myVote: votes.get(r.id) ?? 0 }));
 }
 
@@ -74,7 +77,7 @@ export async function fetchChannel(slug: string): Promise<Channel | null> {
 export const PAGE_SIZE = 10;
 
 // One page of the channel's feed (pages start at 1), plus the total number of pages
-export async function fetchPosts(channelId: number, page: number, deviceId: string) {
+export async function fetchPosts(channelId: number, page: number, userId: string | null) {
   const [{ data, error }, { count, error: countError }] = await Promise.all([
     supabase.rpc('feed_page', { p_channel_id: channelId, p_page: page, p_page_size: PAGE_SIZE }),
     supabase.from('posts').select('*', { count: 'exact', head: true }).eq('channel_id', channelId),
@@ -82,62 +85,48 @@ export async function fetchPosts(channelId: number, page: number, deviceId: stri
   if (error) throw error;
   if (countError) throw countError;
   return {
-    posts: await withPostVotes(data, deviceId),
+    posts: await withPostVotes(data, userId),
     pageCount: Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE)),
   };
 }
 
-export async function fetchPost(id: number, deviceId: string) {
+export async function fetchPost(id: number, userId: string | null) {
   const { data, error } = await supabase
     .from('posts')
-    .select('*, channel:channels(slug, name)')
+    .select('*, channel:channels(slug, name, owner_id)')
     .eq('id', id)
     .single();
   if (error) throw error;
-  const [post] = await withPostVotes([data], deviceId);
-  return post as Post & { channel: Pick<Channel, 'slug' | 'name'> };
+  const [post] = await withPostVotes([data], userId);
+  return post as Post & { channel: Pick<Channel, 'slug' | 'name' | 'owner_id'> };
 }
 
-export async function fetchComments(postId: number, deviceId: string): Promise<Comment[]> {
+export async function fetchComments(postId: number, userId: string | null): Promise<Comment[]> {
   const { data, error } = await supabase
     .from('comments')
-    .select('id, post_id, parent_id, author_name, body, score, created_at')
+    .select('id, post_id, parent_id, user_id, author_name, body, score, created_at')
     .eq('post_id', postId)
     .order('score', { ascending: false })
     .order('created_at');
   if (error) throw error;
-  const votes = await myVotes('comment_votes', 'comment_id', data.map((c) => c.id), deviceId);
+  const votes = await myVotes('comment_votes', 'comment_id', data.map((c) => c.id), userId);
   return data.map((c) => ({ ...c, myVote: votes.get(c.id) ?? 0 }));
 }
 
 // A value of 0 removes the vote
-export async function votePost(postId: number, value: Vote, deviceId: string) {
-  const { error } = await supabase.rpc('vote_post', {
-    p_post_id: postId,
-    p_device_id: deviceId,
-    p_value: value,
-  });
+export async function votePost(postId: number, value: Vote) {
+  const { error } = await supabase.rpc('vote_post', { p_post_id: postId, p_value: value });
   if (error) throw error;
 }
 
-export async function voteComment(commentId: number, value: Vote, deviceId: string) {
-  const { error } = await supabase.rpc('vote_comment', {
-    p_comment_id: commentId,
-    p_device_id: deviceId,
-    p_value: value,
-  });
+export async function voteComment(commentId: number, value: Vote) {
+  const { error } = await supabase.rpc('vote_comment', { p_comment_id: commentId, p_value: value });
   if (error) throw error;
 }
 
-export async function addComment(
-  postId: number,
-  parentId: number | null,
-  body: string,
-  deviceId: string,
-) {
-  const { error } = await supabase
-    .from('comments')
-    .insert({ post_id: postId, parent_id: parentId, body, device_id: deviceId });
+// The database signs the comment with the signed-in user
+export async function addComment(postId: number, parentId: number | null, body: string) {
+  const { error } = await supabase.from('comments').insert({ post_id: postId, parent_id: parentId, body });
   if (error) throw error;
 }
 
