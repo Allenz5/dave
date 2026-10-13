@@ -6,8 +6,10 @@ import { PostCard } from '@/components/PostCard';
 import { Shell } from '@/components/Shell';
 import { FilterCard, SearchCard } from '@/components/Strategy';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect } from 'react';
 import { useChannel, usePosts, useStrategy, type Channel as ChannelRow } from '@/lib/api';
 import { useUserId } from '@/lib/auth';
+import { markOpened } from '@/lib/recent';
 import { useBreakpoints } from '@/lib/theme';
 
 // The URL is /<channel slug>?page=<n>
@@ -31,6 +33,7 @@ function Channel({ channel, page }: { channel: ChannelRow; page: number }) {
   const bannerHeight = wide ? 120 : 72;
   const userId = useUserId();
   const isOwner = userId !== null && userId === channel.owner_id;
+  useEffect(() => markOpened(channel.slug), [channel.slug]);
 
   return (
     <Shell

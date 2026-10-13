@@ -3,8 +3,10 @@ import {
   addComment,
   addKeyword,
   deleteKeyword,
+  deletePost,
   editComment,
   fetchChannel,
+  fetchChannelCards,
   fetchComments,
   fetchKeywords,
   fetchPost,
@@ -20,10 +22,18 @@ import {
 } from '@db/queries';
 import { useUserId } from './auth';
 
-export type { Channel, Comment, EmbedProvider, Keyword, Post, Strategy, Vote } from '@db/queries';
+export type { Channel, ChannelCard, Comment, EmbedProvider, Keyword, Post, Strategy, Vote } from '@db/queries';
 
 export function useChannel(slug: string) {
   return useQuery({ queryKey: ['channel', slug], queryFn: () => fetchChannel(slug) });
+}
+
+// Shuffled on every load, so the home page features a different pick each time
+export function useChannelCards() {
+  return useQuery({
+    queryKey: ['channelCards'],
+    queryFn: async () => (await fetchChannelCards()).sort(() => Math.random() - 0.5),
+  });
 }
 
 export function useStrategy(channelId: number) {
@@ -90,6 +100,20 @@ export function useComments(postId: number) {
 function applyVote<T extends { id: number; score: number; myVote: Vote }>(id: number, value: Vote) {
   return (item: T) =>
     item.id === id ? { ...item, score: item.score - item.myVote + value, myVote: value } : item;
+}
+
+// Optimistic: the post leaves the feed at once, and the page refetches either way
+export function useDeletePost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deletePost,
+    onMutate: (id) =>
+      qc.setQueriesData<FeedPage>(
+        { queryKey: ['posts'] },
+        (feed) => feed && { ...feed, posts: feed.posts.filter((p) => p.id !== id) },
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['posts'] }),
+  });
 }
 
 export function useVotePost() {

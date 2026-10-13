@@ -20,12 +20,13 @@ export type Channel = {
 export type Post = {
   id: number;
   channel_id: number;
-  author_name: string;
   title: string | null;
   body: string;
   image_url: string | null;
   embed_provider: EmbedProvider | null;
   embed_id: string | null;
+  // URLs behind the agent's note in body, when it checked the post with a web search
+  sources: string[];
   score: number;
   comment_count: number;
   created_at: string;
@@ -74,6 +75,19 @@ export async function fetchChannel(slug: string): Promise<Channel | null> {
   return data;
 }
 
+// A channel as the home page shows it: with its post count and when its latest post was made
+export type ChannelCard = Pick<Channel, 'id' | 'slug' | 'name' | 'description' | 'banner_url'> & {
+  post_count: number;
+  last_post_at: string | null;
+};
+
+// Every channel, in no particular order
+export async function fetchChannelCards(): Promise<ChannelCard[]> {
+  const { data, error } = await supabase.rpc('channel_cards');
+  if (error) throw error;
+  return data;
+}
+
 export const PAGE_SIZE = 10;
 
 // One page of the channel's feed (pages start at 1), plus the total number of pages
@@ -114,6 +128,11 @@ export async function fetchComments(postId: number, userId: string | null): Prom
 }
 
 // A value of 0 removes the vote
+export async function deletePost(postId: number) {
+  const { error } = await supabase.from('posts').delete().eq('id', postId);
+  if (error) throw error;
+}
+
 export async function votePost(postId: number, value: Vote) {
   const { error } = await supabase.rpc('vote_post', { p_post_id: postId, p_value: value });
   if (error) throw error;

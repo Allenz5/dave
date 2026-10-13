@@ -20,7 +20,7 @@ export default function PrivacyScreen() {
         <Text className="font-bold text-3xl text-ink">Privacy Policy</Text>
         <Text className="font-mono text-xs text-ink-weak">Last updated October 13, 2026</Text>
         <Section title="What dave is">
-          dave is a reading feed. Anyone can read it without an account. Signing in with Google lets a channel's owner
+          dave is a reading feed. Anyone can read it without an account. Signing in with Google lets the owner of a channel
           label its posts with votes and comments.
         </Section>
         <Section title="What we collect">

@@ -1,11 +1,17 @@
 ## Reader
-<One sentence: who reads this channel and what they want from it.>
+<One short line: who reads this channel and what they want.>
 
 ## Keep
-- <Criterion a post must meet.> E.g. <one-line case>
+- <Criterion, at most 12 words>
+  ```
+  <One-line example post>
+  ```
 
 ## Drop
-- <Criterion that rules a post out.> E.g. <one-line case>
+- <Criterion, at most 12 words>
+  ```
+  <One-line example post>
+  ```
 
 ## Verify
-- <When the post alone can't be judged or trusted, and what to look up.>
+- <When to check → what to search, at most 20 words>

@@ -13,8 +13,9 @@ Each labeled post has the post, the filter's decision and reason (if it was filt
 Method:
 1. Find disagreements: the filter kept a post the reader voted down, or dropped one the reader voted up. Posts where both agree show which rules work.
 2. Group disagreements by cause into patterns. A pattern needs at least 2 posts; a single post changes nothing.
-3. Turn each pattern into a general criterion with the reason behind it, plus one short case that illustrates it. Never copy a comment into the prompt: state the principle the comment points to.
-4. Merge overlapping rules and remove rules no labeled post supports. Keep it concise: at most 6 bullets per section, each at most 2 lines.
+3. Turn each pattern into a general criterion plus one example post that illustrates it. Never copy a comment into the prompt: state the principle the comment points to.
+4. Merge overlapping rules and remove rules no labeled post supports.
+5. Keep it skimmable: at most 6 bullets per section, each bullet at most 12 words, each example one line in its own code block under the bullet, as the template shows.
 
 Output the full new prompt in exactly this template, in English:
 

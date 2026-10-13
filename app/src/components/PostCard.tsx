@@ -1,9 +1,8 @@
-import { Image, Pressable, Text, View } from 'react-native';
+import { Image, Linking, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { useComments, useVotePost, type Post } from '@/lib/api';
+import { useComments, useDeletePost, useVotePost, type Post } from '@/lib/api';
 import { useColors } from '@/lib/theme';
 import { timeAgo } from '@/lib/time';
-import { Avatar } from './Avatar';
 import { CommentTree, Composer } from './Comments';
 import { Embed } from './Embed';
 import { PixelIcon } from './PixelIcon';
@@ -41,6 +40,30 @@ export function PostImage({ uri }: { uri: string }) {
   );
 }
 
+const host = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+
+// What the agent's web search added to a reposted post, with the sources to read more
+export function AgentNote({ post }: { post: Post }) {
+  if (!post.embed_provider || !post.body) return null;
+  return (
+    <View className="mt-3 gap-1 border-l-2 border-line pl-3">
+      <Text className="font-mono-bold text-xs text-ink-weak">Agent note</Text>
+      <Text className="text-sm leading-5 text-ink">{post.body}</Text>
+      <View className="flex-row flex-wrap gap-x-3">
+        {post.sources.map((url) => (
+          <Text
+            key={url}
+            onPress={() => Linking.openURL(url)}
+            className="font-mono text-xs text-primary hover:underline"
+          >
+            {host(url)}
+          </Text>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export function PostEmbed({ post }: { post: Post }) {
   if (!post.embed_provider || !post.embed_id) return null;
   return (
@@ -50,16 +73,9 @@ export function PostEmbed({ post }: { post: Post }) {
   );
 }
 
-export function PostTitleBar({ name, time }: { name: string; time: string }) {
-  return (
-    <>
-      <Avatar name={name} size={18} />
-      <Text numberOfLines={1} className="text-xs font-semibold text-ink">
-        {name}
-      </Text>
-      <Text className="font-mono text-xs text-ink-weak">{timeAgo(time)}</Text>
-    </>
-  );
+// Posts are reposts by the agent, so the bar shows only when the original was posted
+export function PostTitleBar({ time }: { time: string }) {
+  return <Text className="font-mono text-xs text-ink-weak">{timeAgo(time)}</Text>;
 }
 
 const FEED_COMMENTS = 5;
@@ -83,27 +99,39 @@ function FeedComments({ post, canLabel }: { post: Post; canLabel: boolean }) {
   );
 }
 
-// Post card in the feed with its comments below; tapping the post opens it
+// Post card in the feed with its comments below; tapping the post opens it. The owner can delete it with the x.
 export function PostCard({ post, canLabel }: { post: Post; canLabel: boolean }) {
+  const remove = useDeletePost();
+  const c = useColors();
   return (
     <View>
       <Pressable onPress={() => router.push(`/post/${post.id}`)} className="px-3 py-4 hover:bg-surface-hover">
         <View className="flex-row items-center gap-2">
-          <PostTitleBar name={post.author_name} time={post.created_at} />
+          <PostTitleBar time={post.created_at} />
           {post.filter_decision === 'dropped' && (
             <Text className="border border-line px-1.5 font-mono text-xs text-ink-weak">Filtered out</Text>
+          )}
+          {canLabel && (
+            <Pressable
+              onPress={() => remove.mutate(post.id)}
+              className="ml-auto h-6 w-6 items-center justify-center hover:bg-pill"
+              accessibilityLabel="Delete post"
+            >
+              <PixelIcon name="close" size={10} color={c['ink-weak']} />
+            </Pressable>
           )}
         </View>
         {post.title && (
           <Text className="mt-2 font-semibold text-lg leading-6 text-ink">{post.title}</Text>
         )}
-        {!post.image_url && !!post.body && (
+        {!post.image_url && !post.embed_provider && !!post.body && (
           <Text numberOfLines={3} className="mt-1.5 text-sm leading-5 text-ink-weak">
             {post.body}
           </Text>
         )}
         {post.image_url && <PostImage uri={post.image_url} />}
         <PostEmbed post={post} />
+        <AgentNote post={post} />
         <PostActions post={post} canLabel={canLabel} />
       </Pressable>
       <FeedComments post={post} canLabel={canLabel} />

@@ -2,7 +2,7 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { CommentTree, Composer } from '@/components/Comments';
 import { PixelIcon } from '@/components/PixelIcon';
-import { PostActions, PostEmbed, PostImage, PostTitleBar } from '@/components/PostCard';
+import { AgentNote, PostActions, PostEmbed, PostImage, PostTitleBar } from '@/components/PostCard';
 import { ButtonLabel, RetroButton } from '@/components/Retro';
 import { Shell } from '@/components/Shell';
 import { useComments, usePost } from '@/lib/api';
@@ -37,16 +37,17 @@ export default function PostScreen() {
 
           <View className="px-3">
             <View className="flex-row items-center gap-2">
-              <PostTitleBar name={post.author_name} time={post.created_at} />
+              <PostTitleBar time={post.created_at} />
             </View>
             {post.title && (
               <Text className="mt-2 font-semibold text-2xl leading-8 text-ink">{post.title}</Text>
             )}
-            {!!post.body && (
+            {!post.embed_provider && !!post.body && (
               <Text className="mt-2 text-base leading-6 text-ink">{post.body}</Text>
             )}
             {post.image_url && <PostImage uri={post.image_url} />}
             <PostEmbed post={post} />
+            <AgentNote post={post} />
             <PostActions post={post} canLabel={isOwner} />
           </View>
 

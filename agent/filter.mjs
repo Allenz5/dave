@@ -1,4 +1,5 @@
-// Screens each new post in pool_<topic>.jsonl with the channel's filter prompt, verifying by web search when needed.
+// Screens each new post in pool_<topic>.jsonl with the channel's filter prompt, verifying by web search when needed;
+// a kept post that was checked gets a short note of what the search found, with its sources.
 // Kept posts go into the channel; a few random dropped ones go in too (5% of the kept count), marked, so the reader
 // can catch wrong drops. Every decision is logged to filter_log.jsonl and never redone. Usage: node filter.mjs [limit per channel]
 import { appendFileSync } from "fs";
@@ -7,7 +8,7 @@ import { claude, DIR, formatPost, poolOf, prompt, readJsonl, rest } from "./lib.
 
 const DROPPED_PER_KEPT = 0.05;
 const LOG = join(DIR, "filter_log.jsonl");
-const limit = parseInt(process.argv[2] ?? "Infinity");
+const limit = Number(process.argv[2] ?? Infinity);
 
 const decision = (options) => ({
   type: "object",
@@ -19,6 +20,15 @@ const decision = (options) => ({
   required: ["decision", "reason"],
 });
 
+const NOTE = {
+  type: "object",
+  properties: {
+    note: { type: "string", maxLength: 280 },
+    sources: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 3 },
+  },
+  required: ["note", "sources"],
+};
+
 // First pass may ask to explore; after web search the second pass must decide.
 async function screen(filterPrompt, post) {
   const vars = { prompt: filterPrompt, post: formatPost(post) };
@@ -29,7 +39,10 @@ async function screen(filterPrompt, post) {
     prompt("filter", { ...vars, findings: `\n<search_findings query="${first.explore}">\n${findings}\n</search_findings>\n` }),
     { schema: decision(["yes", "no"]) }
   );
-  return { ...final, explore: first.explore, findings };
+  if (final.decision !== "yes") return { ...final, explore: first.explore, findings };
+  // A kept post that needed checking gets a short note with what the search found, and its sources
+  const { note, sources } = await claude(prompt("note", { post: vars.post, findings }), { schema: NOTE });
+  return { ...final, explore: first.explore, findings, note, sources };
 }
 
 const done = new Set(readJsonl(LOG).map((d) => `${d.topic}:${d.id}`));
@@ -45,9 +58,9 @@ for (const { id: channelId, slug, strategy } of channels) {
       headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
       body: JSON.stringify({
         channel_id: channelId,
-        author_name: post.author,
         title: null,
-        body: "",
+        body: d.note ?? "",
+        sources: d.sources ?? [],
         embed_provider: "x",
         embed_id: post.id,
         created_at: post.posted_at ?? post.collected_at,
