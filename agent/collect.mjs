@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSyn
 import { spawn } from "child_process";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { rest } from "./lib.mjs";
 
 const X = "/Users/allenzhang/workspace/claude-toolkit/servers/x";
 process.env.AUTH_DIR = join(X, ".auth");
@@ -11,10 +12,11 @@ const require = createRequire(import.meta.url);
 const { getAuthenticatedPage } = require(join(X, "dist/behaviors/login.js"));
 const { scrapePosts, waitForTwitterReady, dismissPopups } = require(join(X, "dist/scrapers/index.js"));
 
-const TOPICS = {
-  opensource: ['"open source" AI', '"open-source" LLM', '"open weights"', "url:github.com LLM", 'url:github.com "AI agent"', '"just open sourced"'],
-  startup: ['"we raised" AI', '"seed round" AI', '"Series A" AI', '"launching today" AI', '"just launched" AI startup', '"YC" AI startup'],
-};
+// Each channel's search keywords, which refine.mjs keeps up to date
+const TOPICS = {};
+for (const { query, channel } of await rest("search_keywords?select=query,channel:channels(slug)&order=id")) {
+  (TOPICS[channel.slug] ??= []).push(query);
+}
 const DIR = dirname(fileURLToPath(import.meta.url));
 const MEDIA = join(DIR, "media");
 mkdirSync(MEDIA, { recursive: true });

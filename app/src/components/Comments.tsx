@@ -148,13 +148,12 @@ function CommentItem({
             )}
             <View className="flex-row items-center">
               <VotePill
-                plain
                 score={comment.score}
                 myVote={comment.myVote}
                 onVote={(value) => vote.mutate({ id: comment.id, value })}
                 disabled={!canLabel}
               />
-              {canLabel && (
+              {userId !== null && (
                 <Pressable
                   onPress={() => setReplying(true)}
                   className="h-7 flex-row items-center gap-1.5 px-2 hover:bg-pill"
@@ -189,7 +188,7 @@ function CommentItem({
   );
 }
 
-// limit caps the number of top-level threads shown; canLabel lets the channel owner vote and reply
+// limit caps the number of top-level threads shown; canLabel lets the channel owner vote on comments
 export function CommentTree({
   comments,
   limit,

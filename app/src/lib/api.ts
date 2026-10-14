@@ -9,9 +9,9 @@ import {
   fetchChannelCards,
   fetchComments,
   fetchKeywords,
-  fetchPost,
   fetchPosts,
   fetchStrategy,
+  saveFeedback,
   updateFilterPrompt,
   voteComment,
   votePost,
@@ -83,11 +83,6 @@ export function usePosts(channelId: number, page: number) {
 
 type FeedPage = Awaited<ReturnType<typeof fetchPosts>>;
 
-export function usePost(id: number) {
-  const userId = useUserId();
-  return useQuery({ queryKey: ['post', id, userId], queryFn: () => fetchPost(id, userId) });
-}
-
 export function useComments(postId: number) {
   const userId = useUserId();
   return useQuery({
@@ -126,12 +121,21 @@ export function useVotePost() {
         { queryKey: ['posts'] },
         (feed) => feed && { ...feed, posts: feed.posts.map(update) },
       );
-      qc.setQueriesData<Post>({ queryKey: ['post', id] }, (post) => post && update(post));
     },
-    onError: (_err, { id }) => {
-      qc.invalidateQueries({ queryKey: ['posts'] });
-      qc.invalidateQueries({ queryKey: ['post', id] });
+    onError: () => qc.invalidateQueries({ queryKey: ['posts'] }),
+  });
+}
+
+// Optimistic, like votes
+export function useSaveFeedback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: string }) => saveFeedback(id, body),
+    onMutate: ({ id, body }) => {
+      const update = (post: Post) => (post.id === id ? { ...post, feedback: body || null } : post);
+      qc.setQueriesData<FeedPage>({ queryKey: ['posts'] }, (feed) => feed && { ...feed, posts: feed.posts.map(update) });
     },
+    onError: () => qc.invalidateQueries({ queryKey: ['posts'] }),
   });
 }
 
@@ -156,7 +160,6 @@ export function useAddComment(postId: number) {
       addComment(postId, parentId, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['comments', postId] });
-      qc.invalidateQueries({ queryKey: ['post', postId] });
       qc.invalidateQueries({ queryKey: ['posts'] });
     },
   });

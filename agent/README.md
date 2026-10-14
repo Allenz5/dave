@@ -9,7 +9,7 @@
    - explore：帖子内容不足以判断，或需要核实某个说法时，说明要搜什么，交给一个带 WebSearch 的 Claude 去查，再根据结果判断 yes / no。
    - yes 写进 channel；no 不进 Supabase，只随机放入相当于 kept 数量 5% 的帖子，标为 dropped，用来发现误杀。
    - 所有判断记在 `filter_log.jsonl`，判断过的不会重判。
-3. `refine.mjs`（refine agent）：读取一个 channel 里被点赞、踩或评论过的帖子，从分歧中找 pattern，配 case，改写 filter prompt 并直接生效；改动记在 `refine_log.jsonl`。
+3. `refine.mjs`（refine agent）：读取一个 channel 里 owner 点过大拇指或写过 feedback 的帖子，从分歧中找 pattern，配 case，改写 filter prompt；再按每个关键词的收集数、通过数和赞踩数增删搜索关键词。两者都直接生效，改动记在 `refine_log.jsonl`。每次只读还没学过的标注帖子，学过的在 Supabase 里标 `posts.learned`；之后改了赞踩或 feedback 会自动变回没学过。
 
 ```
 node collect.mjs 10      # 每个关键词抓 10 条
@@ -25,6 +25,6 @@ node refine.mjs startup  # 按 channel 迭代 prompt
 
 ## 配置
 
-- 关键词写在 `collect.mjs` 的 `TOPICS` 里，和 Supabase 的 `search_keywords` 目前靠手动同步。
+- 关键词存在 Supabase 的 `search_keywords`，`collect.mjs` 每次运行时读取。
 - 脚本从仓库根目录的 `.env` 读 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`；Claude 通过本机 `claude -p` 调用。
 - 定时任务：launchd `com.dave.collect`，跑 collect 后接 filter，目前已暂停（disabled）。

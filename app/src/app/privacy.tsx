@@ -20,15 +20,15 @@ export default function PrivacyScreen() {
         <Text className="font-bold text-3xl text-ink">Privacy Policy</Text>
         <Text className="font-mono text-xs text-ink-weak">Last updated October 13, 2026</Text>
         <Section title="What dave is">
-          dave is a reading feed. Anyone can read it without an account. Signing in with Google lets the owner of a channel
-          label its posts with votes and comments.
+          dave is a reading feed. Anyone can read it without an account. Signing in with Google lets you comment, and lets
+          the owner of a channel label its posts with votes and feedback.
         </Section>
         <Section title="What we collect">
           When you sign in with Google we receive your name, email address and Google account ID. We store them with the
-          votes, comments, search keywords and filter prompts you create on dave.
+          comments, votes, feedback, search keywords and filter prompts you create on dave.
         </Section>
         <Section title="How we use it">
-          Your name is shown next to your comments. Your votes and comments are used to improve how dave picks posts for
+          Your name is shown next to your comments. Votes and feedback from a channel owner are used to improve how dave picks posts for
           your channels. We do not sell your data, use it for advertising, or share it with anyone except the services
           that run dave: Supabase (database and sign-in) and Vercel (hosting).
         </Section>

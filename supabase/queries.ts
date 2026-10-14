@@ -33,6 +33,8 @@ export type Post = {
   // Set by the agent's filter; a 'dropped' post is a sample shown so wrong drops can be caught
   filter_decision: 'kept' | 'dropped' | null;
   myVote: Vote;
+  // The owner's note on why the post should or shouldn't be here; null for anyone else
+  feedback: string | null;
 };
 
 export type Comment = {
@@ -63,9 +65,18 @@ async function myVotes(
   return new Map((data as any[]).map((row) => [row[key] as number, row.value as Vote]));
 }
 
-async function withPostVotes(rows: Omit<Post, 'myVote'>[], userId: string | null): Promise<Post[]> {
-  const votes = await myVotes('post_votes', 'post_id', rows.map((r) => r.id), userId);
-  return rows.map((r) => ({ ...r, myVote: votes.get(r.id) ?? 0 }));
+// Only the channel owner gets feedback rows back
+async function myFeedback(ids: number[], userId: string | null) {
+  if (ids.length === 0 || !userId) return new Map<number, string>();
+  const { data, error } = await supabase.from('feedback').select('post_id, body').in('post_id', ids);
+  if (error) throw error;
+  return new Map(data.map((row) => [row.post_id as number, row.body as string]));
+}
+
+async function withPostVotes(rows: Omit<Post, 'myVote' | 'feedback'>[], userId: string | null): Promise<Post[]> {
+  const ids = rows.map((r) => r.id);
+  const [votes, feedback] = await Promise.all([myVotes('post_votes', 'post_id', ids, userId), myFeedback(ids, userId)]);
+  return rows.map((r) => ({ ...r, myVote: votes.get(r.id) ?? 0, feedback: feedback.get(r.id) ?? null }));
 }
 
 // The slug is the channel's id in the URL; null when there is no such channel
@@ -104,17 +115,6 @@ export async function fetchPosts(channelId: number, page: number, userId: string
   };
 }
 
-export async function fetchPost(id: number, userId: string | null) {
-  const { data, error } = await supabase
-    .from('posts')
-    .select('*, channel:channels(slug, name, owner_id)')
-    .eq('id', id)
-    .single();
-  if (error) throw error;
-  const [post] = await withPostVotes([data], userId);
-  return post as Post & { channel: Pick<Channel, 'slug' | 'name' | 'owner_id'> };
-}
-
 export async function fetchComments(postId: number, userId: string | null): Promise<Comment[]> {
   const { data, error } = await supabase
     .from('comments')
@@ -140,6 +140,14 @@ export async function votePost(postId: number, value: Vote) {
 
 export async function voteComment(commentId: number, value: Vote) {
   const { error } = await supabase.rpc('vote_comment', { p_comment_id: commentId, p_value: value });
+  if (error) throw error;
+}
+
+// An empty body removes the feedback
+export async function saveFeedback(postId: number, body: string) {
+  const { error } = body
+    ? await supabase.from('feedback').upsert({ post_id: postId, body, updated_at: new Date().toISOString() })
+    : await supabase.from('feedback').delete().eq('post_id', postId);
   if (error) throw error;
 }
 
