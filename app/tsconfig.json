@@ -21,5 +21,8 @@
     "expo-env.d.ts",
     "nativewind-env.d.ts",
     "../supabase/**/*.ts"
+  ],
+  "exclude": [
+    "../supabase/functions"
   ]
 }

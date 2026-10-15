@@ -1,4 +1,6 @@
-// Searches X's latest posts for each topic's keywords into pool_<topic>.jsonl; filter.mjs then screens them into Supabase. Usage: node collect.mjs [posts per keyword]
+// Searches X's latest posts for each topic's keywords into pool_<topic>.jsonl; filter.mjs then screens them into Supabase.
+// Each keyword scrolls back until it reaches the newest post its last search saw, or the channel's crawl intensity cap.
+// Usage: node collect.mjs
 import { createRequire } from "module";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { spawn } from "child_process";
@@ -12,18 +14,26 @@ const require = createRequire(import.meta.url);
 const { getAuthenticatedPage } = require(join(X, "dist/behaviors/login.js"));
 const { scrapePosts, waitForTwitterReady, dismissPopups } = require(join(X, "dist/scrapers/index.js"));
 
+// Posts per keyword per run, by the channel's crawl intensity (1-5)
+const CAP = [5, 10, 15, 20, 30];
+
 // Each channel's search keywords, which refine.mjs keeps up to date
+const KEYWORDS = await rest(
+  "search_keywords?select=id,query,last_posted_at,channel:channels(slug,strategy(crawl_intensity))&order=id"
+);
 const TOPICS = {};
-for (const { query, channel } of await rest("search_keywords?select=query,channel:channels(slug)&order=id")) {
-  (TOPICS[channel.slug] ??= []).push(query);
-}
+for (const k of KEYWORDS) (TOPICS[k.channel.slug] ??= []).push(k);
 const DIR = dirname(fileURLToPath(import.meta.url));
 const MEDIA = join(DIR, "media");
 mkdirSync(MEDIA, { recursive: true });
 
-const perKeyword = parseInt(process.argv[2] ?? "10");
 const jobs = Object.entries(TOPICS).flatMap(([topic, keywords]) =>
-  keywords.map((q) => ({ topic, source: `search:${q}`, run: (page) => searchLatest(page, q, perKeyword) }))
+  keywords.map((k) => ({
+    topic,
+    keyword: k,
+    source: `search:${k.query}`,
+    run: (page) => searchLatest(page, k.query, CAP[(k.channel.strategy?.crawl_intensity ?? 2) - 1], k.last_posted_at),
+  }))
 );
 
 const poolOf = (topic) => join(DIR, `pool_${topic}.jsonl`);
@@ -31,13 +41,14 @@ const poolOf = (topic) => join(DIR, `pool_${topic}.jsonl`);
 const seen = Object.fromEntries(Object.keys(TOPICS).map((topic) => [topic, new Set(
   existsSync(poolOf(topic)) ? readFileSync(poolOf(topic), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l).id) : []
 )]));
-// X's Latest tab, English only, no replies.
-async function searchLatest(page, query, n) {
+// X's Latest tab, English only, no replies. Stops at n posts, or at the first post older than since.
+async function searchLatest(page, query, n, since) {
   await page.goto(`https://x.com/search?q=${encodeURIComponent(`${query} lang:en -filter:replies`)}&src=typed_query&f=live`);
   await waitForTwitterReady(page);
   await dismissPopups(page);
   await page.waitForSelector('section[role="region"]', { timeout: 10000 }).catch(() => {});
-  return scrapePosts(page, { maxPosts: n });
+  const maxAgeHours = since ? (Date.now() - new Date(since)) / 3600_000 : undefined;
+  return scrapePosts(page, { maxPosts: n, maxAgeHours, maxConsecutiveOldPosts: 1 });
 }
 
 // lang:en isn't exact, so also drop posts with mostly non-ASCII letters.
@@ -245,6 +256,13 @@ let added = 0;
 for (const job of jobs) {
   try {
     const posts = await job.run(page);
+    // Where the next search for this keyword stops
+    const newest = Math.max(...posts.map((p) => new Date(p.timestamp)));
+    if (posts.length && newest > new Date(job.keyword.last_posted_at ?? 0))
+      await rest(`search_keywords?id=eq.${job.keyword.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ last_posted_at: new Date(newest).toISOString() }),
+      });
     for (const p of posts) {
       if (seen[job.topic].has(p.postId) || !isEnglish(p.content)) continue;
       seen[job.topic].add(p.postId);

@@ -4,12 +4,17 @@ import Markdown from 'react-native-markdown-display';
 import {
   useAddKeyword,
   useDeleteKeyword,
+  useEnqueueTask,
   useKeywords,
   useStrategy,
+  useTasks,
+  useUpdateCrawlIntensity,
   useUpdateFilterPrompt,
   type Keyword,
+  type TaskType,
 } from '@/lib/api';
 import { useColors } from '@/lib/theme';
+import { timeAgo } from '@/lib/time';
 import { PixelIcon } from './PixelIcon';
 import { ButtonLabel, RetroButton, Window } from './Retro';
 
@@ -103,7 +108,55 @@ function AddKeyword({ channelId }: { channelId: number }) {
   );
 }
 
+const TASK_LABEL: Record<TaskType, string> = { collect: 'Collect now', refine: 'Refine now' };
+
+// Queues a task for the owner's agent, with the latest task of that type beside it
+function RunTask({ channelId, type }: { channelId: number; type: TaskType }) {
+  const { data: tasks } = useTasks(channelId);
+  const enqueue = useEnqueueTask(channelId);
+  const last = tasks?.find((t) => t.type === type);
+  const open = last?.status === 'queued' || last?.status === 'running';
+  const status =
+    last &&
+    (last.status === 'failed'
+      ? `Failed ${timeAgo(last.finished_at!)}: ${last.error}`
+      : last.status === 'done'
+        ? `Done ${timeAgo(last.finished_at!)}`
+        : last.status === 'running'
+          ? 'Running'
+          : `Queued ${timeAgo(last.created_at)}, waiting for your agent`);
+  return (
+    <View className="gap-1">
+      <View className="flex-row items-center gap-2">
+        <RetroButton onPress={() => enqueue.mutate(type)} disabled={open || enqueue.isPending}>
+          <ButtonLabel>{TASK_LABEL[type]}</ButtonLabel>
+        </RetroButton>
+        {status && <Text className="min-w-0 flex-1 font-mono text-xs text-ink-weak">{status}</Text>}
+      </View>
+      {enqueue.error && <Text className="font-mono text-xs text-primary">{enqueue.error.message}</Text>}
+    </View>
+  );
+}
+
 // The X search keywords for a topic; canEdit (the channel owner) adds and deletes them.
+// Five-step bar: tap a step to set the level; filled up to the current one
+function Intensity({ channelId, level, canEdit }: { channelId: number; level: number; canEdit: boolean }) {
+  const update = useUpdateCrawlIntensity(channelId);
+  return (
+    <View className="h-5 flex-row gap-1">
+      {[1, 2, 3, 4, 5].map((step) => (
+        <Pressable
+          key={step}
+          onPress={() => update.mutate(step)}
+          disabled={!canEdit}
+          accessibilityLabel={`Crawl intensity ${step}`}
+          className={`flex-1 border border-line ${step <= level ? 'bg-primary' : 'bg-pill'} ${canEdit ? 'hover:opacity-80' : ''}`}
+        />
+      ))}
+    </View>
+  );
+}
+
 export function SearchCard({ channelId, canEdit }: { channelId: number; canEdit: boolean }) {
   const { data: s } = useStrategy(channelId);
   const { data: keywords } = useKeywords(channelId);
@@ -119,6 +172,10 @@ export function SearchCard({ channelId, canEdit }: { channelId: number; canEdit:
             </View>
             {canEdit && <AddKeyword channelId={channelId} />}
           </Field>
+          <Field label="Crawl intensity">
+            <Intensity channelId={channelId} level={s.crawl_intensity} canEdit={canEdit} />
+          </Field>
+          {canEdit && <RunTask channelId={channelId} type="collect" />}
         </View>
       )}
     </Window>
@@ -142,7 +199,10 @@ export function FilterCard({ channelId, canEdit }: { channelId: number; canEdit:
             <>
               <Markdown style={markdownStyle(c)}>{s.filter_prompt}</Markdown>
               {canEdit && (
-                <View className="flex-row justify-end">
+                <View className="flex-row items-start gap-2">
+                  <View className="min-w-0 flex-1">
+                    <RunTask channelId={channelId} type="refine" />
+                  </View>
                   <RetroButton onPress={() => setDraft(s.filter_prompt)}>
                     <ButtonLabel>Edit</ButtonLabel>
                   </RetroButton>

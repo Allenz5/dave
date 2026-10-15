@@ -11,6 +11,7 @@ import { useChannel, usePosts, useStrategy, type Channel as ChannelRow } from '@
 import { useUserId } from '@/lib/auth';
 import { markOpened } from '@/lib/recent';
 import { useBreakpoints } from '@/lib/theme';
+import { dayLabel } from '@/lib/time';
 
 // The URL is /<channel slug>?page=<n>
 export default function ChannelScreen() {
@@ -74,11 +75,21 @@ function Channel({ channel, page }: { channel: ChannelRow; page: number }) {
           </View>
         )}
         <View className="min-w-0 flex-1">
-          {feed?.posts.map((post) => (
-            <View key={post.id} className="border-t border-line">
-              <PostCard post={post} canLabel={isOwner} />
-            </View>
-          ))}
+          {feed && page === 1 && <DayHeading day="Today" />}
+          {feed?.posts.map((post, i) => {
+            const day = post.collected_at && dayLabel(post.collected_at);
+            // A page starts under the heading of the previous page's last post; page 1 starts under Today
+            const prev = i ? feed.posts[i - 1].collected_at : feed.prevCollectedAt;
+            const prevDay = prev ? dayLabel(prev) : page === 1 ? 'Today' : null;
+            return (
+              <View key={post.id}>
+                {day && day !== prevDay && <DayHeading day={day} />}
+                <View className="border-t border-line">
+                  <PostCard post={post} canLabel={isOwner} />
+                </View>
+              </View>
+            );
+          })}
           {feed && (
             <Pager
               page={page}
@@ -95,4 +106,8 @@ function Channel({ channel, page }: { channel: ChannelRow; page: number }) {
       </View>
     </Shell>
   );
+}
+
+function DayHeading({ day }: { day: string }) {
+  return <Text className="px-3 pb-3 pt-8 font-bold text-3xl text-title">{day}</Text>;
 }

@@ -30,6 +30,8 @@ export type Post = {
   score: number;
   comment_count: number;
   created_at: string;
+  // When the agent collected it; the feed is ordered and split into days by this
+  collected_at: string | null;
   // Set by the agent's filter; a 'dropped' post is a sample shown so wrong drops can be caught
   filter_decision: 'kept' | 'dropped' | null;
   myVote: Vote;
@@ -101,17 +103,23 @@ export async function fetchChannelCards(): Promise<ChannelCard[]> {
 
 export const PAGE_SIZE = 10;
 
-// One page of the channel's feed (pages start at 1), plus the total number of pages
+// One page of the channel's feed (pages start at 1), the total number of pages, and when the previous page's
+// last post was collected, so the page knows whether it continues that post's day
 export async function fetchPosts(channelId: number, page: number, userId: string | null) {
-  const [{ data, error }, { count, error: countError }] = await Promise.all([
+  const [{ data, error }, { count, error: countError }, prev] = await Promise.all([
     supabase.rpc('feed_page', { p_channel_id: channelId, p_page: page, p_page_size: PAGE_SIZE }),
     supabase.from('posts').select('*', { count: 'exact', head: true }).eq('channel_id', channelId),
+    page > 1
+      ? supabase.rpc('feed_page', { p_channel_id: channelId, p_page: (page - 1) * PAGE_SIZE, p_page_size: 1 })
+      : null,
   ]);
   if (error) throw error;
   if (countError) throw countError;
+  if (prev?.error) throw prev.error;
   return {
     posts: await withPostVotes(data, userId),
     pageCount: Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE)),
+    prevCollectedAt: (prev?.data?.[0]?.collected_at as string | null | undefined) ?? null,
   };
 }
 
@@ -162,7 +170,8 @@ export async function editComment(commentId: number, body: string) {
   if (error) throw error;
 }
 
-export type Strategy = { filter_prompt: string };
+// crawl_intensity: 1-5, how many posts the agent's search takes per keyword each run
+export type Strategy = { filter_prompt: string; crawl_intensity: number };
 
 export type Keyword = { id: number; query: string };
 
@@ -170,7 +179,7 @@ export type Keyword = { id: number; query: string };
 export async function fetchStrategy(channelId: number): Promise<Strategy | null> {
   const { data, error } = await supabase
     .from('strategy')
-    .select('filter_prompt')
+    .select('filter_prompt, crawl_intensity')
     .eq('channel_id', channelId)
     .maybeSingle();
   if (error) throw error;
@@ -182,6 +191,11 @@ export async function updateFilterPrompt(channelId: number, prompt: string) {
     .from('strategy')
     .update({ filter_prompt: prompt })
     .eq('channel_id', channelId);
+  if (error) throw error;
+}
+
+export async function updateCrawlIntensity(channelId: number, level: number) {
+  const { error } = await supabase.from('strategy').update({ crawl_intensity: level }).eq('channel_id', channelId);
   if (error) throw error;
 }
 
@@ -202,5 +216,35 @@ export async function addKeyword(channelId: number, query: string) {
 
 export async function deleteKeyword(id: number) {
   const { error } = await supabase.from('search_keywords').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export type TaskType = 'collect' | 'refine';
+
+// Work queued for the owner's agent; only the owner can see a channel's tasks
+export type Task = {
+  id: number;
+  type: TaskType;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+};
+
+// The channel's latest tasks, newest first
+export async function fetchTasks(channelId: number): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('id, type, status, error, created_at, finished_at')
+    .eq('channel_id', channelId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  if (error) throw error;
+  return data;
+}
+
+// Returns the task already open when there is one
+export async function enqueueTask(channelId: number, type: TaskType) {
+  const { error } = await supabase.rpc('enqueue_task', { p_channel_id: channelId, p_type: type });
   if (error) throw error;
 }

@@ -5,24 +5,29 @@ import {
   deleteKeyword,
   deletePost,
   editComment,
+  enqueueTask,
   fetchChannel,
   fetchChannelCards,
   fetchComments,
   fetchKeywords,
   fetchPosts,
   fetchStrategy,
+  fetchTasks,
   saveFeedback,
+  updateCrawlIntensity,
   updateFilterPrompt,
   voteComment,
   votePost,
   type Comment,
   type Keyword,
   type Post,
+  type Strategy,
+  type TaskType,
   type Vote,
 } from '@db/queries';
 import { useUserId } from './auth';
 
-export type { Channel, ChannelCard, Comment, EmbedProvider, Keyword, Post, Strategy, Vote } from '@db/queries';
+export type { Channel, ChannelCard, Comment, EmbedProvider, Keyword, Post, Strategy, Task, TaskType, Vote } from '@db/queries';
 
 export function useChannel(slug: string) {
   return useQuery({ queryKey: ['channel', slug], queryFn: () => fetchChannel(slug) });
@@ -45,6 +50,34 @@ export function useUpdateFilterPrompt(channelId: number) {
   return useMutation({
     mutationFn: (prompt: string) => updateFilterPrompt(channelId, prompt),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['strategy', channelId] }),
+  });
+}
+
+// Optimistic: the slider moves at once, and snaps back if the save fails
+export function useUpdateCrawlIntensity(channelId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (level: number) => updateCrawlIntensity(channelId, level),
+    onMutate: (level) =>
+      qc.setQueryData<Strategy | null>(['strategy', channelId], (s) => s && { ...s, crawl_intensity: level }),
+    onError: () => qc.invalidateQueries({ queryKey: ['strategy', channelId] }),
+  });
+}
+
+// Polled while a task is open, so its status moves on its own
+export function useTasks(channelId: number) {
+  return useQuery({
+    queryKey: ['tasks', channelId],
+    queryFn: () => fetchTasks(channelId),
+    refetchInterval: (q) => (q.state.data?.some((t) => t.status === 'queued' || t.status === 'running') ? 30_000 : false),
+  });
+}
+
+export function useEnqueueTask(channelId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (type: TaskType) => enqueueTask(channelId, type),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks', channelId] }),
   });
 }
 

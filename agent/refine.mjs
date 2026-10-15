@@ -32,13 +32,17 @@ if (!labeled.length) {
   process.exit(0);
 }
 
-// What each keyword brought in: posts collected, kept by the filter, and voted up or down by the reader
+// What each keyword brought in: posts collected (in all, in the last 3 days, and posted over a day before collection),
+// kept by the filter, and voted up or down by the reader
+const DAY = 86400_000;
 const kept = new Set(readJsonl(join(DIR, "filter_log.jsonl")).filter((d) => d.topic === slug && d.decision === "yes").map((d) => d.id));
 const vote = new Map(posts.map((p) => [p.embed_id, Math.sign(p.score)]));
 const keywords = channel.search_keywords.map(({ query }) => {
   const found = [...pool.values()].filter((p) => p.source === `search:${query}`);
   const count = (f) => found.filter(f).length;
-  return `- ${query}: ${found.length} collected, ${count((p) => kept.has(p.id))} kept, ${count((p) => vote.get(p.id) === 1)} up, ${count((p) => vote.get(p.id) === -1)} down`;
+  const recent = count((p) => Date.now() - new Date(p.collected_at) < 3 * DAY);
+  const stale = count((p) => p.posted_at && new Date(p.collected_at) - new Date(p.posted_at) > DAY);
+  return `- ${query}: ${found.length} collected (${recent} in the last 3 days, ${stale} posted over a day before collection), ${count((p) => kept.has(p.id))} kept, ${count((p) => vote.get(p.id) === 1)} up, ${count((p) => vote.get(p.id) === -1)} down`;
 });
 
 const old = channel.strategy.filter_prompt;
@@ -55,7 +59,7 @@ const out = await claude(
       properties: {
         prompt: { type: "string" },
         changes: { type: "array", items: { type: "string" } },
-        keywords: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 8 },
+        keywords: { type: "array", items: { type: "string" }, minItems: 1 },
         keyword_changes: { type: "array", items: { type: "string" } },
       },
       required: ["prompt", "changes", "keywords", "keyword_changes"],

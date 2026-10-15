@@ -13,5 +13,5 @@
   <One-line example post>
   ```
 
-## Verify
-- <When to check → what to search, at most 20 words>
+## Explore
+- <When the post is too thin to judge → what to find out, at most 20 words>

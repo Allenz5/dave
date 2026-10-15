@@ -83,13 +83,18 @@ export function PostImage({ uri }: { uri: string }) {
 
 const host = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
 
-// What the agent's web search added to a reposted post, with the sources to read more
+// What the agent's web search added to a reposted post, with the sources to read more; posts on the same story
+// that were merged into this one show up as sources too
 export function AgentNote({ post }: { post: Post }) {
-  if (!post.embed_provider || !post.body) return null;
+  if (!post.embed_provider || (!post.body && !post.sources.length)) return null;
   return (
     <View className="mt-3 gap-1 border-l-2 border-line pl-3">
-      <Text className="font-mono-bold text-xs text-ink-weak">Agent note</Text>
-      <Text className="text-sm leading-5 text-ink">{post.body}</Text>
+      {!!post.body && (
+        <>
+          <Text className="font-mono-bold text-xs text-ink-weak">Agent note</Text>
+          <Text className="text-sm leading-5 text-ink">{post.body}</Text>
+        </>
+      )}
       <View className="flex-row flex-wrap gap-x-3">
         {post.sources.map((url) => (
           <Text
@@ -121,8 +126,8 @@ export function PostTitleBar({ time }: { time: string }) {
 
 const FEED_COMMENTS = 5;
 
-// The post's top comment threads and a comment box, shown under it in the feed
-function FeedComments({ post, canLabel }: { post: Post; canLabel: boolean }) {
+// The post's top comment threads and a comment box; hidden from the feed for now
+export function FeedComments({ post, canLabel }: { post: Post; canLabel: boolean }) {
   const { data: comments } = useComments(post.id);
   const userId = useUserId();
   const [all, setAll] = useState(false);
@@ -148,9 +153,9 @@ export function PostCard({ post, canLabel }: { post: Post; canLabel: boolean }) 
   const c = useColors();
   return (
     <View>
-      <View className="px-3 pb-3 pt-4">
+      <View className="px-3 py-4">
         <View className="flex-row items-center gap-2">
-          <PostTitleBar time={post.created_at} />
+          <PostTitleBar time={post.collected_at ?? post.created_at} />
           {post.filter_decision === 'dropped' && (
             <Text className="border border-line px-1.5 font-mono text-xs text-ink-weak">Filtered out</Text>
           )}
@@ -179,7 +184,6 @@ export function PostCard({ post, canLabel }: { post: Post; canLabel: boolean }) 
       <View className="px-3 pb-4">
         <PostActions post={post} canLabel={canLabel} />
       </View>
-      <FeedComments post={post} canLabel={canLabel} />
     </View>
   );
 }

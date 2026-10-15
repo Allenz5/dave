@@ -14,7 +14,8 @@ const headers = { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "
 export async function rest(path, init) {
   const res = await fetch(`${ENV.SUPABASE_URL}/rest/v1/${path}`, { ...init, headers: { ...headers, ...init?.headers } });
   if (!res.ok) throw new Error(`${path}: ${res.status} ${await res.text()}`);
-  return res.status === 204 || res.status === 201 ? null : res.json();
+  const body = await res.text();
+  return body ? JSON.parse(body) : null;
 }
 
 export const MODEL = "claude-opus-5-5";
