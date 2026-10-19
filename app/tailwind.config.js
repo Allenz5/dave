@@ -21,6 +21,9 @@ module.exports = {
         brand: token('brand'),
         down: token('down'),
         primary: token('primary'),
+        online: token('online'),
+        offline: token('offline'),
+        idle: token('idle'),
       },
       fontFamily: {
         pixel: ['PressStart2P_400Regular'],

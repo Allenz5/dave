@@ -2,8 +2,9 @@ import { useSyncExternalStore } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@db/client';
 
-// One session for the whole app, kept current by Supabase's auth events
-let session: Session | null = null;
+// One session for the whole app, kept current by Supabase's auth events; undefined until Supabase has read the
+// stored one
+let session: Session | null | undefined = undefined;
 const listeners = new Set<() => void>();
 supabase.auth.onAuthStateChange((_event, next) => {
   session = next;

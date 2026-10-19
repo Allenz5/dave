@@ -4,7 +4,7 @@
 
 ## 流程
 
-1. `collect.mjs`（搜索）：用登录态在 X 的 Latest 里搜每个 topic 的关键词，展开全文、引用、链接，图片和音视频总结成文字，追加到 `pool_<topic>.jsonl`。每个关键词往下滚，碰到比上次看到的最新帖子更早的帖子就停（`search_keywords.last_posted_at`），最多抓的条数由 channel 的抓取强度决定（`strategy.crawl_intensity`，1–5 档对应 5 / 10 / 15 / 20 / 30 条）。
+1. `collect.mjs`（搜索）：用登录态在 X 的 Latest 里搜每个 topic 的关键词，展开全文、引用、链接，图片和音视频总结成文字，追加到 `pool_<topic>.jsonl`。每个关键词往下滚，碰到比上次看到的最新帖子更早的帖子就停（`search_keywords.last_posted_at`），最多抓的条数由 channel 设置决定（`strategy.posts_per_keyword`，5–50 条）。
 2. `filter.mjs`（filter agent）：对 pool 里没判断过的帖子，用该 channel 的 filter prompt 判断 yes / no / explore。
    - explore：帖子信息不足以判断时，说明缺什么，交给一个带 WebSearch 的 Claude 去找，再根据结果判断 yes / no，信息还不够可以继续 explore，最多 5 轮，第 5 轮后必须判断。不重复查帖子里已经写了的内容。
    - yes 写进 channel；no 不进 Supabase，只随机放入相当于 kept 数量 5% 的帖子，标为 dropped，用来发现误杀。

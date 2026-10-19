@@ -398,3 +398,8 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # The function verifies the user's OAuth token itself, and MCP clients reach its discovery route without one
 [functions.mcp]
 verify_jwt = false
+static_files = ["./functions/mcp/playbook.md", "./functions/mcp/screen.md", "./functions/mcp/template.md"]
+
+[functions.init-channel]
+verify_jwt = false
+static_files = ["./functions/mcp/template.md"]

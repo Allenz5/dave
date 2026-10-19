@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
+import { useAgentStatus, type AgentStatus } from '@/lib/api';
+import { RECONNECT, SETUP, useCopy } from '@/lib/agent';
 import { signIn, signOut, useSession } from '@/lib/auth';
 import { themeVars, useBreakpoints, useColors, useScheme } from '@/lib/theme';
 import { LogoMark, PixelIcon } from './PixelIcon';
@@ -17,12 +19,33 @@ function Logo() {
   );
 }
 
+const AGENT: Record<AgentStatus, { dot: string; label: string }> = {
+  none: { dot: 'bg-idle', label: 'Connect agent' },
+  connected: { dot: 'bg-online', label: 'Agent connected' },
+  stalled: { dot: 'bg-offline', label: 'Reconnect agent' },
+};
+
+// The user's agent: a dot for its state, and a button that copies the instruction for the user to give it: to fix it
+// when it stopped running, else to set it up
+function Agent({ userId }: { userId: string }) {
+  const { data } = useAgentStatus(userId);
+  const { copied, copy } = useCopy(data === 'stalled' ? RECONNECT : SETUP);
+  const { dot, label } = AGENT[data ?? 'none'];
+  return (
+    <Pressable onPress={copy} className="h-6 flex-row items-center gap-1.5 px-2 hover:bg-black/10">
+      <View className={`h-2 w-2 rounded-full border border-ink ${dot}`} />
+      <Text className="font-mono-bold text-xs text-ink">{copied ? 'Copied, paste it to your agent' : label}</Text>
+    </Pressable>
+  );
+}
+
 // Google account in the top bar: sign in, or the signed-in name and sign out
 function Account() {
   const session = useSession();
   const name = session?.user.user_metadata.full_name ?? session?.user.email;
   return (
     <View className="ml-auto flex-row items-center gap-2">
+      {session && <Agent userId={session.user.id} />}
       {session && <Text className="font-mono text-xs text-ink">{name}</Text>}
       <Pressable onPress={session ? signOut : signIn} className="h-6 justify-center px-2 hover:bg-black/10">
         <Text className="font-mono-bold text-xs text-ink">{session ? 'Sign out' : 'Sign in with Google'}</Text>

@@ -1,0 +1,25 @@
+{
+  "name": "@allenz5/dave-x",
+  "version": "0.1.3",
+  "description": "Local MCP server that reads X for a dave agent: searches latest posts and reads posts in full, in the user's own logged-in browser",
+  "type": "module",
+  "bin": {
+    "dave-x": "src/cli.mjs"
+  },
+  "files": [
+    "src",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.3.1",
+    "playwright-core": "^1.64.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "zod": "^4.6.7"
+  }
+}

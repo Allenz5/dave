@@ -1,20 +1,22 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import {
   useAddKeyword,
+  useAgentStatus,
   useDeleteKeyword,
-  useEnqueueTask,
   useKeywords,
+  useRefineQueued,
+  useRunNow,
+  useSetRefine,
   useStrategy,
-  useTasks,
-  useUpdateCrawlIntensity,
   useUpdateFilterPrompt,
+  useUpdateSettings,
   type Keyword,
-  type TaskType,
 } from '@/lib/api';
+import { RUN, useCopy } from '@/lib/agent';
+import { useUserId } from '@/lib/auth';
 import { useColors } from '@/lib/theme';
-import { timeAgo } from '@/lib/time';
 import { PixelIcon } from './PixelIcon';
 import { ButtonLabel, RetroButton, Window } from './Retro';
 
@@ -40,8 +42,8 @@ function Chip({
   const remove = useDeleteKeyword(channelId);
   const c = useColors();
   return (
-    <View className="flex-row items-center border border-line bg-surface">
-      <Text className={`py-1 pl-2 font-mono text-xs text-ink ${canEdit ? 'pr-1' : 'pr-2'}`}>
+    <View className="max-w-full flex-row items-center border border-line bg-surface">
+      <Text className={`min-w-0 shrink py-1 pl-2 font-mono text-xs text-ink ${canEdit ? 'pr-1' : 'pr-2'}`}>
         {keyword.query}
       </Text>
       {canEdit && (
@@ -108,60 +110,11 @@ function AddKeyword({ channelId }: { channelId: number }) {
   );
 }
 
-const TASK_LABEL: Record<TaskType, string> = { collect: 'Collect now', refine: 'Refine now' };
-
-// Queues a task for the owner's agent, with the latest task of that type beside it
-function RunTask({ channelId, type }: { channelId: number; type: TaskType }) {
-  const { data: tasks } = useTasks(channelId);
-  const enqueue = useEnqueueTask(channelId);
-  const last = tasks?.find((t) => t.type === type);
-  const open = last?.status === 'queued' || last?.status === 'running';
-  const status =
-    last &&
-    (last.status === 'failed'
-      ? `Failed ${timeAgo(last.finished_at!)}: ${last.error}`
-      : last.status === 'done'
-        ? `Done ${timeAgo(last.finished_at!)}`
-        : last.status === 'running'
-          ? 'Running'
-          : `Queued ${timeAgo(last.created_at)}, waiting for your agent`);
-  return (
-    <View className="gap-1">
-      <View className="flex-row items-center gap-2">
-        <RetroButton onPress={() => enqueue.mutate(type)} disabled={open || enqueue.isPending}>
-          <ButtonLabel>{TASK_LABEL[type]}</ButtonLabel>
-        </RetroButton>
-        {status && <Text className="min-w-0 flex-1 font-mono text-xs text-ink-weak">{status}</Text>}
-      </View>
-      {enqueue.error && <Text className="font-mono text-xs text-primary">{enqueue.error.message}</Text>}
-    </View>
-  );
-}
-
-// The X search keywords for a topic; canEdit (the channel owner) adds and deletes them.
-// Five-step bar: tap a step to set the level; filled up to the current one
-function Intensity({ channelId, level, canEdit }: { channelId: number; level: number; canEdit: boolean }) {
-  const update = useUpdateCrawlIntensity(channelId);
-  return (
-    <View className="h-5 flex-row gap-1">
-      {[1, 2, 3, 4, 5].map((step) => (
-        <Pressable
-          key={step}
-          onPress={() => update.mutate(step)}
-          disabled={!canEdit}
-          accessibilityLabel={`Crawl intensity ${step}`}
-          className={`flex-1 border border-line ${step <= level ? 'bg-primary' : 'bg-pill'} ${canEdit ? 'hover:opacity-80' : ''}`}
-        />
-      ))}
-    </View>
-  );
-}
-
 export function SearchCard({ channelId, canEdit }: { channelId: number; canEdit: boolean }) {
   const { data: s } = useStrategy(channelId);
   const { data: keywords } = useKeywords(channelId);
   return (
-    <Window title="Search">
+    <Window title="Keywords">
       {s && (
         <View className="gap-4 p-3">
           <Field label="Keywords">
@@ -172,10 +125,6 @@ export function SearchCard({ channelId, canEdit }: { channelId: number; canEdit:
             </View>
             {canEdit && <AddKeyword channelId={channelId} />}
           </Field>
-          <Field label="Crawl intensity">
-            <Intensity channelId={channelId} level={s.crawl_intensity} canEdit={canEdit} />
-          </Field>
-          {canEdit && <RunTask channelId={channelId} type="collect" />}
         </View>
       )}
     </Window>
@@ -192,17 +141,14 @@ export function FilterCard({ channelId, canEdit }: { channelId: number; canEdit:
   const save = () => update.mutate(draft!, { onSuccess: () => setDraft(null) });
 
   return (
-    <Window title="Filter">
+    <Window title="Rubric">
       {s && (
         <View className="gap-2 p-3">
           {draft === null ? (
             <>
-              <Markdown style={markdownStyle(c)}>{s.filter_prompt}</Markdown>
+              <Markdown style={markdownStyle(c)}>{fenceExamples(s.filter_prompt)}</Markdown>
               {canEdit && (
-                <View className="flex-row items-start gap-2">
-                  <View className="min-w-0 flex-1">
-                    <RunTask channelId={channelId} type="refine" />
-                  </View>
+                <View className="flex-row justify-end">
                   <RetroButton onPress={() => setDraft(s.filter_prompt)}>
                     <ButtonLabel>Edit</ButtonLabel>
                   </RetroButton>
@@ -241,11 +187,137 @@ export function FilterCard({ channelId, canEdit }: { channelId: number; canEdit:
   );
 }
 
+const POSTS_PER_KEYWORD = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+
+function Checkbox({ checked, label, onPress }: { checked: boolean; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} className="flex-row items-center gap-2 self-start py-0.5 hover:opacity-80">
+      <View className={`h-4 w-4 border border-line ${checked ? 'bg-primary' : 'bg-surface'}`} />
+      <Text className="font-mono text-xs text-ink">{label}</Text>
+    </Pressable>
+  );
+}
+
+// A value that opens a list of choices below it
+function Dropdown({ value, options, onChange }: { value: number; options: number[]; onChange: (v: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const c = useColors();
+  return (
+    <View className="self-start border border-line bg-surface">
+      <Pressable onPress={() => setOpen(!open)} className="h-7 flex-row items-center gap-2 px-2 hover:bg-pill">
+        <Text className="w-6 font-mono text-xs text-ink">{value}</Text>
+        <PixelIcon name={open ? 'up' : 'down'} size={8} color={c['ink-weak']} />
+      </Pressable>
+      {open &&
+        options.map((o) => (
+          <Pressable
+            key={o}
+            onPress={() => {
+              onChange(o);
+              setOpen(false);
+            }}
+            className={`h-6 justify-center border-t border-line px-2 ${o === value ? 'bg-pill' : 'hover:bg-pill'}`}
+          >
+            <Text className="font-mono text-xs text-ink">{o}</Text>
+          </Pressable>
+        ))}
+    </View>
+  );
+}
+
+// Minutes to the next full hour, when every agent runs; kept current every half minute
+function useMinutesToHour() {
+  const left = () => 60 - new Date().getMinutes();
+  const [minutes, setMinutes] = useState(left);
+  useEffect(() => {
+    const id = setInterval(() => setMinutes(left()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  return minutes;
+}
+
+// How the owner's agent runs this channel: when it next runs, how many posts each keyword takes, pausing, refining
+// on the next run, and a collect right away, which queues it and copies the prompt to give the agent. Only the owner sees it.
+export function ConfigCard({ channelId }: { channelId: number }) {
+  const { data: s } = useStrategy(channelId);
+  const { data: agent } = useAgentStatus(useUserId());
+  const update = useUpdateSettings(channelId);
+  const { data: refine } = useRefineQueued(channelId);
+  const setRefine = useSetRefine(channelId);
+  const runNow = useRunNow(channelId);
+  const minutes = useMinutesToHour();
+  const { copied, copy } = useCopy(RUN);
+
+  const next = s?.paused
+    ? 'Paused'
+    : agent === 'connected'
+      ? `In ${minutes} min`
+      : agent === 'stalled'
+        ? 'Agent offline'
+        : 'No agent connected';
+
+  return (
+    <Window title="Configuration">
+      {s && (
+        <View className="gap-4 p-3">
+          <Field label="Next run">
+            <Text className="font-mono text-xs text-ink">{next}</Text>
+          </Field>
+          <Field label="Posts per keyword">
+            <Dropdown
+              value={s.posts_per_keyword}
+              options={POSTS_PER_KEYWORD}
+              onChange={(v) => update.mutate({ posts_per_keyword: v })}
+            />
+          </Field>
+          <View className="gap-1.5">
+            <Checkbox checked={s.paused} label="Pause collecting" onPress={() => update.mutate({ paused: !s.paused })} />
+            <Checkbox
+              checked={!!refine}
+              label="Iterate on the next run"
+              onPress={() => setRefine.mutate(!refine)}
+            />
+            {refine && (
+              <Text className="font-mono text-xs leading-5 text-ink-weak">
+                The next run rewrites the rubric from your votes and feedback.
+              </Text>
+            )}
+          </View>
+          {(update.error ?? setRefine.error ?? runNow.error) && (
+            <Text className="font-mono text-xs text-primary">
+              {(update.error ?? setRefine.error ?? runNow.error)!.message}
+            </Text>
+          )}
+          <View className="flex-row items-center gap-2">
+            <RetroButton
+              onPress={() => {
+                // Copied first: browsers only let a click write the clipboard before anything is awaited
+                copy();
+                runNow.mutate();
+              }}
+            >
+              <ButtonLabel>Run now</ButtonLabel>
+            </RetroButton>
+            {copied && (
+              <Text className="min-w-0 flex-1 font-mono text-xs text-ink-weak">Copied, paste it to your agent</Text>
+            )}
+          </View>
+        </View>
+      )}
+    </Window>
+  );
+}
+
+// An example written on one line as ```text``` becomes the fenced block the template asks for, so it renders like one
+function fenceExamples(md: string) {
+  return md.replace(/^(\s*)```([^`\n]+)```\s*$/gm, '$1```\n$1$2\n$1```');
+}
+
 function markdownStyle(c: ReturnType<typeof useColors>) {
   return {
     body: { color: c.ink, fontSize: 13, lineHeight: 19 },
     heading1: { fontSize: 18, fontWeight: '700' as const, marginVertical: 6 },
-    // Section titles (Reader, Keep, Drop, Verify) look like the Search panel's field labels
+    // Section titles (Reader, Keep, Drop, Verify) look like the Keywords panel's field labels
     heading2: {
       fontFamily: 'IBMPlexMono_600SemiBold',
       fontSize: 12,

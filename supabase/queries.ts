@@ -8,10 +8,12 @@ export type EmbedProvider = 'x' | 'youtube';
 
 export type Channel = {
   id: number;
+  // The id in the channel's URL
+  public_id: string;
+  // When the owner's agent last claimed a task
+  agent_claimed_at: string | null;
   slug: string;
   name: string;
-  description: string;
-  banner_url: string | null;
   // Only the owner labels the channel's posts and edits its strategy
   owner_id: string | null;
   created_at: string;
@@ -81,24 +83,30 @@ async function withPostVotes(rows: Omit<Post, 'myVote' | 'feedback'>[], userId: 
   return rows.map((r) => ({ ...r, myVote: votes.get(r.id) ?? 0, feedback: feedback.get(r.id) ?? null }));
 }
 
-// The slug is the channel's id in the URL; null when there is no such channel
-export async function fetchChannel(slug: string): Promise<Channel | null> {
-  const { data, error } = await supabase.from('channels').select('*').eq('slug', slug).maybeSingle();
+// null when there is no such channel
+export async function fetchChannel(publicId: string): Promise<Channel | null> {
+  const { data, error } = await supabase.from('channels').select('*').eq('public_id', publicId).maybeSingle();
   if (error) throw error;
   return data;
 }
 
-// A channel as the home page shows it: with its post count and when its latest post was made
-export type ChannelCard = Pick<Channel, 'id' | 'slug' | 'name' | 'description' | 'banner_url'> & {
-  post_count: number;
-  last_post_at: string | null;
-};
-
-// Every channel, in no particular order
-export async function fetchChannelCards(): Promise<ChannelCard[]> {
-  const { data, error } = await supabase.rpc('channel_cards');
+// The user's own channels, oldest first
+export async function fetchMyChannels(userId: string): Promise<Channel[]> {
+  const { data, error } = await supabase.from('channels').select('*').eq('owner_id', userId).order('id');
   if (error) throw error;
   return data;
+}
+
+// A new empty channel for the signed-in user; returns its public id
+export async function addChannel(): Promise<string> {
+  const { data, error } = await supabase.rpc('add_channel');
+  if (error) throw error;
+  return data;
+}
+
+export async function renameChannel(id: number, name: string) {
+  const { error } = await supabase.from('channels').update({ name }).eq('id', id);
+  if (error) throw error;
 }
 
 export const PAGE_SIZE = 10;
@@ -170,8 +178,11 @@ export async function editComment(commentId: number, body: string) {
   if (error) throw error;
 }
 
-// crawl_intensity: 1-5, how many posts the agent's search takes per keyword each run
-export type Strategy = { filter_prompt: string; crawl_intensity: number };
+// The owner's settings: posts each keyword takes per run, and whether the hourly runs skip the channel
+export type Settings = { posts_per_keyword: number; paused: boolean };
+
+// iterations: how many times refine has rewritten the rubric from the owner's labels
+export type Strategy = { filter_prompt: string; iterations: number } & Settings;
 
 export type Keyword = { id: number; query: string };
 
@@ -179,7 +190,7 @@ export type Keyword = { id: number; query: string };
 export async function fetchStrategy(channelId: number): Promise<Strategy | null> {
   const { data, error } = await supabase
     .from('strategy')
-    .select('filter_prompt, crawl_intensity')
+    .select('filter_prompt, iterations, posts_per_keyword, paused')
     .eq('channel_id', channelId)
     .maybeSingle();
   if (error) throw error;
@@ -194,8 +205,8 @@ export async function updateFilterPrompt(channelId: number, prompt: string) {
   if (error) throw error;
 }
 
-export async function updateCrawlIntensity(channelId: number, level: number) {
-  const { error } = await supabase.from('strategy').update({ crawl_intensity: level }).eq('channel_id', channelId);
+export async function updateSettings(channelId: number, settings: Partial<Settings>) {
+  const { error } = await supabase.from('strategy').update(settings).eq('channel_id', channelId);
   if (error) throw error;
 }
 
@@ -219,15 +230,15 @@ export async function deleteKeyword(id: number) {
   if (error) throw error;
 }
 
-export type TaskType = 'collect' | 'refine';
-
 // Work queued for the owner's agent; only the owner can see a channel's tasks
 export type Task = {
   id: number;
-  type: TaskType;
-  status: 'queued' | 'running' | 'done' | 'failed';
+  // init: a new channel's first collect, which the server runs itself
+  type: 'collect' | 'keywords' | 'refine' | 'init';
+  status: 'queued' | 'running' | 'done' | 'failed' | 'skipped';
   error: string | null;
   created_at: string;
+  lease_until: string | null;
   finished_at: string | null;
 };
 
@@ -235,7 +246,7 @@ export type Task = {
 export async function fetchTasks(channelId: number): Promise<Task[]> {
   const { data, error } = await supabase
     .from('tasks')
-    .select('id, type, status, error, created_at, finished_at')
+    .select('id, type, status, error, created_at, lease_until, finished_at')
     .eq('channel_id', channelId)
     .order('created_at', { ascending: false })
     .limit(10);
@@ -243,8 +254,74 @@ export async function fetchTasks(channelId: number): Promise<Task[]> {
   return data;
 }
 
-// Returns the task already open when there is one
-export async function enqueueTask(channelId: number, type: TaskType) {
-  const { error } = await supabase.rpc('enqueue_task', { p_channel_id: channelId, p_type: type });
+// Whether the owner has voted on any of the channel's posts
+export async function fetchHasLabels(channelId: number) {
+  const { count, error } = await supabase
+    .from('posts')
+    .select('id', { count: 'exact', head: true })
+    .eq('channel_id', channelId)
+    .neq('score', 0);
   if (error) throw error;
+  return !!count;
+}
+
+// How many collected posts the filter dropped in the channel; only its owner can read it
+export async function fetchFilteredCount(channelId: number) {
+  const { data, error } = await supabase.rpc('filtered_count', { p_channel_id: channelId });
+  if (error) throw error;
+  return data as number;
+}
+
+// Whether the agent's next claim refines the channel
+export async function fetchRefineQueued(channelId: number) {
+  const { count, error } = await supabase
+    .from('tasks')
+    .select('id', { count: 'exact', head: true })
+    .eq('channel_id', channelId)
+    .eq('type', 'refine')
+    .eq('status', 'queued');
+  if (error) throw error;
+  return !!count;
+}
+
+// Asks the agent's next claim to refine the channel, or takes the ask back before it does
+export async function setRefine(channelId: number, on: boolean) {
+  const { error } = await supabase.rpc('set_refine', { p_channel_id: channelId, p_on: on });
+  if (error) throw error;
+}
+
+// Queues a collect for the agent's next claim, outside the hourly slots
+export async function runNow(channelId: number) {
+  const { error } = await supabase.rpc('run_now', { p_channel_id: channelId });
+  if (error) throw error;
+}
+
+// Sets up an empty channel from what the owner wants to read: the server writes its first keywords and rubric and
+// fills the feed with a first batch of posts, in the background as an init task
+export async function initChannel(channelId: number, description: string) {
+  const { error } = await supabase.functions.invoke('init-channel', { body: { channel_id: channelId, description } });
+  if (error) {
+    const body = await error.context?.json?.().catch(() => null);
+    throw new Error(body?.error ?? error.message);
+  }
+}
+
+export type AgentStatus = 'none' | 'connected' | 'stalled';
+
+// Whether the user has granted an agent access, and whether it still runs: it claims every hour, so an hour without
+// a claim means it stopped. An agent that hasn't claimed yet gets an hour from when it was granted.
+export async function fetchAgentStatus(userId: string): Promise<AgentStatus> {
+  const { data: grants, error } = await supabase.auth.oauth.listGrants();
+  if (error) throw error;
+  if (!grants.length) return 'none';
+  const { data: claimed, error: e } = await supabase
+    .from('channels')
+    .select('agent_claimed_at')
+    .eq('owner_id', userId)
+    .not('agent_claimed_at', 'is', null)
+    .order('agent_claimed_at', { ascending: false })
+    .limit(1);
+  if (e) throw e;
+  const last = claimed[0]?.agent_claimed_at ?? grants.map((g) => g.granted_at).sort().at(-1)!;
+  return Date.now() - new Date(last).getTime() > 3_600_000 ? 'stalled' : 'connected';
 }

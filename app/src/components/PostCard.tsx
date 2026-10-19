@@ -4,13 +4,26 @@ import { useComments, useDeletePost, useSaveFeedback, useVotePost, type Post } f
 import { useUserId } from '@/lib/auth';
 import { useColors } from '@/lib/theme';
 import { timeAgo } from '@/lib/time';
+import { AgentSays } from './AgentSays';
 import { CommentTree, Composer } from './Comments';
 import { Embed } from './Embed';
 import { PixelIcon } from './PixelIcon';
 import { RetroButton } from './Retro';
 
-// The owner's label: one thumb, then a feedback note in the same row; nobody else sees any of it
-export function PostActions({ post, canLabel }: { post: Post; canLabel: boolean }) {
+// The owner's label: one thumb, then a feedback note in the same row; nobody else sees any of it.
+// When the agent asks for a label (`asked`), its note sits over the row; a thumbs down opens the feedback box and the
+// note asks why.
+export function PostActions({
+  post,
+  canLabel,
+  asked,
+  onCloseAsk,
+}: {
+  post: Post;
+  canLabel: boolean;
+  asked?: boolean;
+  onCloseAsk?: () => void;
+}) {
   const vote = useVotePost();
   const save = useSaveFeedback();
   const [editing, setEditing] = useState(false);
@@ -24,7 +37,10 @@ export function PostActions({ post, canLabel }: { post: Post; canLabel: boolean 
       <RetroButton
         square
         tone={on ? (value === 1 ? 'up' : 'down') : 'default'}
-        onPress={() => vote.mutate({ id: post.id, value: on ? 0 : value })}
+        onPress={() => {
+          vote.mutate({ id: post.id, value: on ? 0 : value });
+          if (asked && !on) value === 1 ? onCloseAsk?.() : edit();
+        }}
         accessibilityLabel={value === 1 ? 'Thumbs up' : 'Thumbs down'}
       >
         <PixelIcon name={value === 1 ? 'thumbUp' : 'thumbDown'} color={on ? '#FFFFFF' : c.ink} />
@@ -38,27 +54,40 @@ export function PostActions({ post, canLabel }: { post: Post; canLabel: boolean 
   const submit = () => {
     save.mutate({ id: post.id, body: text.trim() });
     setEditing(false);
+    if (asked) onCloseAsk?.();
   };
+
+  // After a thumbs down the note moves over the feedback box it opened
+  const why = asked && editing && post.myVote === -1;
+  const note = (message: string) => (
+    <View className="absolute bottom-full left-0 z-10 mb-3 w-[420px] max-w-full">
+      <AgentSays message={message} onClose={onCloseAsk} />
+    </View>
+  );
 
   return (
     <View className="mt-3 flex-row items-center gap-1">
+      {asked && !why && note('Tell me whether this post is good or not.')}
       {thumb(1)}
       {thumb(-1)}
       <RetroButton square onPress={editing ? submit : edit} accessibilityLabel="Feedback">
         <PixelIcon name="comment" color={c.ink} />
       </RetroButton>
       {editing ? (
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          onSubmitEditing={submit}
-          onKeyPress={(e) => e.nativeEvent.key === 'Escape' && setEditing(false)}
-          autoFocus
-          placeholder="Feedback for the filter"
-          placeholderTextColor={c['ink-weak']}
-          className="ml-1 h-8 min-w-0 flex-1 border border-line bg-surface px-2 font-mono text-xs text-ink"
-          style={{ outlineStyle: 'none' } as any}
-        />
+        <View className="ml-1 min-w-0 flex-1">
+          {why && note("What's wrong with it? Tell me so I filter better.")}
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            onSubmitEditing={submit}
+            onKeyPress={(e) => e.nativeEvent.key === 'Escape' && setEditing(false)}
+            autoFocus
+            placeholder="Feedback for the filter"
+            placeholderTextColor={c['ink-weak']}
+            className="h-8 border border-line bg-surface px-2 font-mono text-xs text-ink"
+            style={{ outlineStyle: 'none' } as any}
+          />
+        </View>
       ) : (
         !!post.feedback && (
           <Text onPress={edit} className="ml-1 min-w-0 flex-1 text-xs leading-4 text-ink-weak">
@@ -147,12 +176,25 @@ export function FeedComments({ post, canLabel }: { post: Post; canLabel: boolean
   );
 }
 
-// Post card in the feed with its comments below. The owner can delete it with the x.
-export function PostCard({ post, canLabel }: { post: Post; canLabel: boolean }) {
+// Post card in the feed with its comments below. The owner can delete it with the x. `onHover` fires when the mouse
+// comes over the card.
+export function PostCard({
+  post,
+  canLabel,
+  asked,
+  onCloseAsk,
+  onHover,
+}: {
+  post: Post;
+  canLabel: boolean;
+  asked?: boolean;
+  onCloseAsk?: () => void;
+  onHover?: () => void;
+}) {
   const remove = useDeletePost();
   const c = useColors();
   return (
-    <View>
+    <View onPointerEnter={(e) => e.nativeEvent.pointerType === 'mouse' && onHover?.()}>
       <View className="px-3 py-4">
         <View className="flex-row items-center gap-2">
           <PostTitleBar time={post.collected_at ?? post.created_at} />
@@ -182,7 +224,7 @@ export function PostCard({ post, canLabel }: { post: Post; canLabel: boolean }) 
         <AgentNote post={post} />
       </View>
       <View className="px-3 pb-4">
-        <PostActions post={post} canLabel={canLabel} />
+        <PostActions post={post} canLabel={canLabel} asked={asked} onCloseAsk={onCloseAsk} />
       </View>
     </View>
   );

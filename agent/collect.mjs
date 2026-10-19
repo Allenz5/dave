@@ -1,5 +1,5 @@
 // Searches X's latest posts for each topic's keywords into pool_<topic>.jsonl; filter.mjs then screens them into Supabase.
-// Each keyword scrolls back until it reaches the newest post its last search saw, or the channel's crawl intensity cap.
+// Each keyword scrolls back until it reaches the newest post its last search saw, or the channel's posts-per-keyword cap.
 // Usage: node collect.mjs
 import { createRequire } from "module";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
@@ -14,12 +14,9 @@ const require = createRequire(import.meta.url);
 const { getAuthenticatedPage } = require(join(X, "dist/behaviors/login.js"));
 const { scrapePosts, waitForTwitterReady, dismissPopups } = require(join(X, "dist/scrapers/index.js"));
 
-// Posts per keyword per run, by the channel's crawl intensity (1-5)
-const CAP = [5, 10, 15, 20, 30];
-
 // Each channel's search keywords, which refine.mjs keeps up to date
 const KEYWORDS = await rest(
-  "search_keywords?select=id,query,last_posted_at,channel:channels(slug,strategy(crawl_intensity))&order=id"
+  "search_keywords?select=id,query,last_posted_at,channel:channels(slug,strategy(posts_per_keyword))&order=id"
 );
 const TOPICS = {};
 for (const k of KEYWORDS) (TOPICS[k.channel.slug] ??= []).push(k);
@@ -32,7 +29,7 @@ const jobs = Object.entries(TOPICS).flatMap(([topic, keywords]) =>
     topic,
     keyword: k,
     source: `search:${k.query}`,
-    run: (page) => searchLatest(page, k.query, CAP[(k.channel.strategy?.crawl_intensity ?? 2) - 1], k.last_posted_at),
+    run: (page) => searchLatest(page, k.query, k.channel.strategy?.posts_per_keyword ?? 10, k.last_posted_at),
   }))
 );
 

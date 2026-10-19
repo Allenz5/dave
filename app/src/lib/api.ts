@@ -1,20 +1,29 @@
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  addChannel,
   addComment,
   addKeyword,
   deleteKeyword,
   deletePost,
   editComment,
-  enqueueTask,
+  fetchAgentStatus,
   fetchChannel,
-  fetchChannelCards,
   fetchComments,
+  fetchFilteredCount,
+  fetchHasLabels,
   fetchKeywords,
+  fetchMyChannels,
   fetchPosts,
+  fetchRefineQueued,
   fetchStrategy,
   fetchTasks,
+  initChannel,
+  renameChannel,
+  runNow,
   saveFeedback,
-  updateCrawlIntensity,
+  setRefine,
+  updateSettings,
   updateFilterPrompt,
   voteComment,
   votePost,
@@ -22,22 +31,37 @@ import {
   type Keyword,
   type Post,
   type Strategy,
-  type TaskType,
+  type Settings,
   type Vote,
 } from '@db/queries';
 import { useUserId } from './auth';
 
-export type { Channel, ChannelCard, Comment, EmbedProvider, Keyword, Post, Strategy, Task, TaskType, Vote } from '@db/queries';
+export type { AgentStatus, Channel, Comment, EmbedProvider, Keyword, Post, Settings, Strategy, Task, Vote } from '@db/queries';
 
-export function useChannel(slug: string) {
-  return useQuery({ queryKey: ['channel', slug], queryFn: () => fetchChannel(slug) });
+export function useChannel(publicId: string, enabled: boolean) {
+  return useQuery({ queryKey: ['channel', publicId], queryFn: () => fetchChannel(publicId), enabled });
 }
 
-// Shuffled on every load, so the home page features a different pick each time
-export function useChannelCards() {
-  return useQuery({
-    queryKey: ['channelCards'],
-    queryFn: async () => (await fetchChannelCards()).sort(() => Math.random() - 0.5),
+export function useMyChannels(userId: string | null) {
+  return useQuery({ queryKey: ['myChannels', userId], queryFn: () => fetchMyChannels(userId!), enabled: !!userId });
+}
+
+export function useAddChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: addChannel,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['myChannels'] }),
+  });
+}
+
+export function useRenameChannel(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => renameChannel(id, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['channel'] });
+      qc.invalidateQueries({ queryKey: ['myChannels'] });
+    },
   });
 }
 
@@ -53,31 +77,98 @@ export function useUpdateFilterPrompt(channelId: number) {
   });
 }
 
-// Optimistic: the slider moves at once, and snaps back if the save fails
-export function useUpdateCrawlIntensity(channelId: number) {
+// Optimistic: the control changes at once, and snaps back if the save fails
+export function useUpdateSettings(channelId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (level: number) => updateCrawlIntensity(channelId, level),
-    onMutate: (level) =>
-      qc.setQueryData<Strategy | null>(['strategy', channelId], (s) => s && { ...s, crawl_intensity: level }),
+    mutationFn: (settings: Partial<Settings>) => updateSettings(channelId, settings),
+    onMutate: (settings) =>
+      qc.setQueryData<Strategy | null>(['strategy', channelId], (s) => s && { ...s, ...settings }),
     onError: () => qc.invalidateQueries({ queryKey: ['strategy', channelId] }),
   });
 }
 
-// Polled while a task is open, so its status moves on its own
+// Read once per visit: it only decides whether the first post asks for a label
+export function useHasLabels(channelId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ['hasLabels', channelId],
+    queryFn: () => fetchHasLabels(channelId),
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+export function useFilteredCount(channelId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ['filteredCount', channelId],
+    queryFn: () => fetchFilteredCount(channelId),
+    enabled,
+  });
+}
+
+// Refetched every minute, so the box clears once the agent takes the refine
+export function useRefineQueued(channelId: number) {
+  return useQuery({
+    queryKey: ['refineQueued', channelId],
+    queryFn: () => fetchRefineQueued(channelId),
+    refetchInterval: 60_000,
+  });
+}
+
+// Optimistic, like the settings
+export function useSetRefine(channelId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (on: boolean) => setRefine(channelId, on),
+    onMutate: (on) => qc.setQueryData(['refineQueued', channelId], on),
+    onError: () => qc.invalidateQueries({ queryKey: ['refineQueued', channelId] }),
+  });
+}
+
+export function useRunNow(channelId: number) {
+  return useMutation({ mutationFn: () => runNow(channelId) });
+}
+
+// Polled while a task is open, so its status moves on its own; the server's init task finishes in about a minute,
+// so it is polled more often
 export function useTasks(channelId: number) {
   return useQuery({
     queryKey: ['tasks', channelId],
     queryFn: () => fetchTasks(channelId),
-    refetchInterval: (q) => (q.state.data?.some((t) => t.status === 'queued' || t.status === 'running') ? 30_000 : false),
+    refetchInterval: (q) => {
+      const open = q.state.data?.filter((t) => t.status === 'queued' || t.status === 'running') ?? [];
+      return open.some((t) => t.type === 'init') ? 3_000 : open.length ? 30_000 : false;
+    },
   });
 }
 
-export function useEnqueueTask(channelId: number) {
+export function useInitChannel(channelId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (type: TaskType) => enqueueTask(channelId, type),
+    mutationFn: (description: string) => initChannel(channelId, description),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks', channelId] }),
+  });
+}
+
+// Everything a finished init task changed: the name, the rubric, the keywords and the feed
+export function useRefreshChannel(channelId: number) {
+  const qc = useQueryClient();
+  return useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['channel'] });
+    qc.invalidateQueries({ queryKey: ['myChannels'] });
+    qc.invalidateQueries({ queryKey: ['strategy', channelId] });
+    qc.invalidateQueries({ queryKey: ['keywords', channelId] });
+    qc.invalidateQueries({ queryKey: ['posts', channelId] });
+  }, [qc, channelId]);
+}
+
+// Refetched every minute, so a stalled agent shows without a reload
+export function useAgentStatus(userId: string | null) {
+  return useQuery({
+    queryKey: ['agentStatus', userId],
+    queryFn: () => fetchAgentStatus(userId!),
+    enabled: !!userId,
+    refetchInterval: 60_000,
   });
 }
 

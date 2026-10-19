@@ -16,6 +16,9 @@ export const palette = {
     brand: '#FF5A1F',
     down: '#6B6775',
     primary: '#D9430B',
+    online: '#22C55E',
+    offline: '#DC2626',
+    idle: '#A8A29E',
   },
   dark: {
     canvas: '#2B2938',
@@ -30,6 +33,9 @@ export const palette = {
     brand: '#FF6B33',
     down: '#A29DB0',
     primary: '#E0521C',
+    online: '#22C55E',
+    offline: '#EF4444',
+    idle: '#A29DB0',
   },
 };
 
